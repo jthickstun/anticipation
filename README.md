@@ -56,7 +56,9 @@ shuf DATAPATH/train-ordered.txt > DATAPATH/train.txt
 
 **Memory**. The most memory intensive operation is the final shuffle operation, which requires the entire final training dataset to be loaded into memory. Alternative memory-efficient solutions do exist for shuffling (or approximately shuffling) the lines of a file, which you may wish to explore if memory is a constraint. Empirically, we have observed that approximate shuffling using a *local* shuffle of the training data is insufficient to achieve good model performance and should be avoided.
 
-**Disk**. The base preprocessed LakhMidi dataset--prepared for autoregressive modeling without anticipation--is about 10Gb. The size of the dataset when prepared for anticipatory autoregressive modeling is a multiple of the base dataset size, controlled by AUGMENT\_FACTOR in `src/settings/constants.py`.
+**Disk**. The base preprocessed LakhMidi dataset--prepared for autoregressive modeling without anticipation--is about 10Gb. The size of the dataset when prepared for anticipatory autoregressive modeling is a multiple of the base dataset size, controlled by AUGMENT\_FACTOR in `src/settings/constants.py`. See the [Cleanup](###cleanup) for cleaning up temporary files on disk after preprocessing.
+
+### Cleanup
 
 Each stage of preprocessing generates temporary files with intermediate outputs. After completing preprocessing, these temporary files can be cleaned up as follows.
 
