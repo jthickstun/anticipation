@@ -2,7 +2,7 @@
 
 Implementation of the anticipatory infilling models described in Anticipatory Autoregressive Models for Controllabel Music Generation.
 
-by [__John Thickstun__](https://johnthickstun.com/) and [__David Hall__](http://dlwh.org/) and [__Chris Donahue__](https://chrisdonahue.com/) and [__Percy Liang__](https://cs.stanford.edu/~pliang/).
+by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlwh.org/), [__Chris Donahue__](https://chrisdonahue.com/), and [__Percy Liang__](https://cs.stanford.edu/~pliang/).
 
 -------------------------------------------------------------------------------------
 
