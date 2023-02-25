@@ -1,0 +1,40 @@
+# training sequence vocab
+
+from anticipation.config import *
+
+# the event block
+EVENT_OFFSET = 0
+TIME_OFFSET = EVENT_OFFSET
+DUR_OFFSET = TIME_OFFSET + MAX_TIME
+NOTE_OFFSET = DUR_OFFSET + MAX_DUR
+REST = NOTE_OFFSET + MAX_NOTE
+
+# the label block
+LABEL_OFFSET = NOTE_OFFSET + MAX_NOTE + 1
+ATIME_OFFSET = LABEL_OFFSET + 0
+ADUR_OFFSET = ATIME_OFFSET + MAX_TIME
+ANOTE_OFFSET = ADUR_OFFSET + MAX_DUR
+
+# the control block
+CONTROL_OFFSET = ANOTE_OFFSET + MAX_NOTE
+SEPARATOR = CONTROL_OFFSET
+AUTOREGRESS = CONTROL_OFFSET + 1
+ANTICIPATE = CONTROL_OFFSET + 2
+VOCAB_SIZE = ANTICIPATE+1
+
+if __name__ == '__main__':
+    print('Training Sequence Format:')
+    print('Event Offset: ', EVENT_OFFSET)
+    print('  -> time offset :', TIME_OFFSET)
+    print('  -> duration offset :', DUR_OFFSET)
+    print('  -> note offset :', NOTE_OFFSET)
+    print('  -> rest token: ', REST)
+    print('Anticipated Label Offset: ', LABEL_OFFSET)
+    print('  -> anticipated time offset :', ATIME_OFFSET)
+    print('  -> anticipated duration offset :', ADUR_OFFSET)
+    print('  -> anticipated note offset :', ANOTE_OFFSET)
+    print('Control Token Offset: ', CONTROL_OFFSET)
+    print('  -> separator token: ', SEPARATOR)
+    print('  -> autoregression flag: ', AUTOREGRESS)
+    print('  -> anticipation flag: ', ANTICIPATE)
+    print('Vocabulary Size: ', VOCAB_SIZE)
