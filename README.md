@@ -25,7 +25,7 @@ The LakhMidi dataset contains over 170,000 MIDI files and the following preproce
 Download the full [LakhMidi dataset](https://colinraffel.com/projects/lmd/) from [here](http://hog.ee.columbia.edu/craffel/lmd/lmd_full.tar.gz). Extract the data to `DATAPATH`.
 
 ```
-tar -xvvf lmd\_full.tar.gz -C DATAPATH
+tar -xvvf lmd_full.tar.gz -C DATAPATH
 ```
 
 Preprocess the binary MIDI files to an intermediate text representation. 
