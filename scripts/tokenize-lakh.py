@@ -21,7 +21,7 @@ def main(args):
 
     paths = [os.path.join(args.datadir, s) for s in LAKH_SPLITS]
     files = [glob(f'{p}/*.compound.txt') for p in paths]
-    outputs = [os.path.join(args.datadir, f'tokenized-events-{p}.txt') for p in paths]
+    outputs = [os.path.join(args.datadir, s, f'tokenized-events-{s}.txt') for s in LAKH_SPLITS]
 
     # don't augment the valid/test splits
     augment = [1 if s in LAKH_VALID or s in LAKH_TEST else AUGMENT_FACTOR for s in LAKH_SPLITS]
@@ -30,6 +30,8 @@ def main(args):
     # if concerned about waste: process larger groups of datafiles
     with Pool(processes=PREPROC_WORKERS, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
         pool.starmap(tokenize, zip(files, outputs, augment, range(len(LAKH_SPLITS))))
+
+    print('Tokenization complete. Remember to shuffle the training split!')
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='tokenizes a MIDI dataset')
