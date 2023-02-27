@@ -204,3 +204,7 @@ def events_to_compound(tokens, debug=False):
     assert all(tok >= 0 for tok in out)
 
     return out
+
+
+def events_to_midi(tokens, debug=False):
+    return compound_to_midi(events_to_compound(tokens))
