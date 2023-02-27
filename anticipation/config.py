@@ -1,5 +1,7 @@
 # model hyper-parameters
 
+EVENT_SIZE = 3                     # each event/label is encoded as 3 tokens
+M = 341                            # model context (1024 = 1 + EVENT_SIZE*M)
 DELTA = 5                          # anticipation time in seconds
 
 # vocabulary constants
@@ -16,8 +18,10 @@ MAX_NOTE = MAX_PITCH*MAX_INSTR     # note = pitch x instrument
 
 PREPROC_WORKERS = 16
 
+MAX_TRACK_INSTR = 15               # exclude tracks with large numbers of instruments
 MAX_TRACK_TIME_IN_SECONDS = 1600   # exclude very long tracks
 MIN_TRACK_EVENTS = 40              # exclude tracks with very few events
+
 AUGMENT_FACTOR = 10                # data augmentation factor (multiple of 10)
 
 # LakhMIDI dataset splits

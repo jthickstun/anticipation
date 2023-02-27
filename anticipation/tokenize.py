@@ -69,7 +69,8 @@ def extract_instruments(all_events, instruments):
 
 def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
     tokens = []
-    seqcount = discarded = rest_count = 0
+    discarded_tracks = 0
+    seqcount = discarded_seqs = rest_count = 0
     np.random.seed(0)
 
     with open(output, 'w') as outfile:
@@ -84,10 +85,13 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
             except FileNotFoundError:
                 continue
 
+            # skip very short sequences
             if len(compound_tokens) < 5*MIN_TRACK_EVENTS:
+                discarded_tracks += 1
                 continue
 
             if min(int(tok) for tok in compound_tokens[0::5]) < 0:
+                discarded_tracks += 1
                 if debug:
                     print(f'ERROR: corrupted document {filename} (skipping)')
 
@@ -96,6 +100,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
             try:
                 all_events = compound_to_events(compound_tokens)
             except ValueError:
+                discarded_tracks += 1
                 if debug:
                     print(f'ERROR: corrupted document {filename} (skipping)')
 
@@ -106,6 +111,11 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
             # get the list of instrument
             instruments = list(ops.get_instruments(all_events).keys())
+
+            # skip sequences more instruments than MIDI channels (16)
+            if len(instruments) > MAX_TRACK_INSTR:
+                discarded_tracks += 1
+                continue
 
             # different random augmentations
             for k in range(augment_factor):
@@ -143,9 +153,9 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                 concatenated_tokens.extend(tokens)
 
                 # write out full sequences to file
-                while len(concatenated_tokens) >= 1023:
-                    seq = concatenated_tokens[0:1023]
-                    concatenated_tokens = concatenated_tokens[1023:]
+                while len(concatenated_tokens) >= EVENT_SIZE*M:
+                    seq = concatenated_tokens[0:EVENT_SIZE*M]
+                    concatenated_tokens = concatenated_tokens[EVENT_SIZE*M:]
 
                     try:
                         # relativize time to the sequence
@@ -156,7 +166,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                         assert ops.min_time(seq, seconds=False) == 0 
                     except OverflowError:
                         # relativized time exceeds MAX_TIME
-                        discarded += 1
+                        discarded_seqs += 1
                         continue
 
                     # if seq contains SEPARATOR, these labels describe the first sequence
@@ -169,5 +179,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                     z = ANTICIPATE if k % 10 != 0 else AUTOREGRESS
 
     if debug:
-        fmt = 'Processed {} sequences (discarded {}, inserted {} rest tokens)'
-        print(fmt.format(seqcount, discarded, rest_count))
+        fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
+        print(fmt.format(seqcount, discarded_tracks, discarded_seqs, rest_count))
+
+    return (seqcount, rest_count, discarded_tracks, discarded_seqs)

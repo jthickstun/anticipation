@@ -26,12 +26,21 @@ def main(args):
     # don't augment the valid/test splits
     augment = [1 if s in LAKH_VALID or s in LAKH_TEST else AUGMENT_FACTOR for s in LAKH_SPLITS]
 
-    # parallel tokenization drops the last chunk of < 1024 tokens
+    # parallel tokenization drops the last chunk of < M tokens
     # if concerned about waste: process larger groups of datafiles
     with Pool(processes=PREPROC_WORKERS, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
-        pool.starmap(tokenize, zip(files, outputs, augment, range(len(LAKH_SPLITS))))
+        results = pool.starmap(tokenize, zip(files, outputs, augment, range(len(LAKH_SPLITS))))
 
-    print('Tokenization complete. Remember to shuffle the training split!')
+    seq_count, rest_count, discarded_tracks, discarded_seqs = (sum(x) for x in zip(*results))
+    rest_ratio = round(100*float(rest_count)/(seq_count*M),2)
+
+    print('Tokenization complete.')
+    print(f'  => Processed {seq_count} training sequences')
+    print(f'  => Inserted {rest_count} REST tokens ({rest_ratio}% of events)')
+    print(f'  => Discarded {discarded_tracks} event sequences')
+    print(f'  => Discarded {discarded_seqs} training sequences')
+
+    print('Remember to shuffle the training split!')
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='tokenizes a MIDI dataset')
