@@ -21,7 +21,7 @@ def main(args):
 
     paths = [os.path.join(args.datadir, s) for s in LAKH_SPLITS]
     files = [glob(f'{p}/*.compound.txt') for p in paths]
-    outputs = [os.path.join(args.datadir, s, f'tokenized-events-{s}.txt') for s in LAKH_SPLITS]
+    outputs = [os.path.join(args.datadir, f'tokenized-events-{s}.txt') for s in LAKH_SPLITS]
 
     # don't augment the valid/test splits
     augment = [1 if s in LAKH_VALID or s in LAKH_TEST else AUGMENT_FACTOR for s in LAKH_SPLITS]
