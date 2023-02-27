@@ -154,10 +154,7 @@ def compound_to_events(tokens):
                     for tok in tokens[1::3]]
     tokens[1::3] = [DUR_OFFSET + tok for tok in tokens[1::3]]
 
-    # this shouldn't happen
-    # TODO: only one example in the dataset; track this down?
-    if min(tokens[0::3]) < 0:
-        raise ValueError
+    assert min(tokens[0::3]) >= 0
     tokens[0::3] = [TIME_OFFSET + tok for tok in tokens[0::3]]
 
     assert len(tokens) % 3 == 0
