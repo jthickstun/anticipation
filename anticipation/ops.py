@@ -20,18 +20,18 @@ def print_tokens(tokens):
 
         if note < LABEL_OFFSET:
             tm = tm - TIME_OFFSET
-            dur = dur-DUR_OFFSET
-            note = note-NOTE_OFFSET
+            dur = dur - DUR_OFFSET
+            note = note - NOTE_OFFSET
             instr = note//2**7
             pitch = note - (2**7)*instr
             print(j, tm, dur, instr, pitch)
         else:
             tm = tm - ATIME_OFFSET
-            dur = dur-ADUR_OFFSET
-            note = note-ANOTE_OFFSET
+            dur = dur - ADUR_OFFSET
+            note = note - ANOTE_OFFSET
             instr = note//2**7
             pitch = note - (2**7)*instr
-            print(j, tm-LABEL_OFFSET, dur, instr, pitch, '(A)')
+            print(j, tm, dur, instr, pitch, '(A)')
 
 
 def clip(tokens, start, end, clip_duration=True):
