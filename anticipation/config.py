@@ -18,7 +18,7 @@ MAX_NOTE = MAX_PITCH*MAX_INSTR     # note = pitch x instrument
 
 PREPROC_WORKERS = 16
 
-MAX_TRACK_INSTR = 15               # exclude tracks with large numbers of instruments
+MAX_TRACK_INSTR = 16               # exclude tracks with large numbers of instruments
 MAX_TRACK_TIME_IN_SECONDS = 1600   # exclude very long tracks
 MIN_TRACK_EVENTS = 40              # exclude tracks with very few events
 
