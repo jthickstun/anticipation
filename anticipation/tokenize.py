@@ -169,7 +169,6 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
                     # skip sequences more instruments than MIDI channels (16)
                     if len(ops.get_instruments(seq)) > MAX_TRACK_INSTR:
-                        print('ARRR')
                         discarded_tracks += 1
                         continue
 
