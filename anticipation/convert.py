@@ -10,10 +10,6 @@ from anticipation.ops import unpad
 def midi_to_compound(midifile, debug=False):
     midi = mido.MidiFile(midifile)
 
-    # don't want to deal with extremely long tracks
-    if midi.length > MAX_TRACK_TIME_IN_SECONDS:
-        raise OverflowError
-
     tokens = []
     note_idx = 0
     open_notes = defaultdict(list)

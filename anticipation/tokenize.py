@@ -109,6 +109,11 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
             # max time before extracting labels
             end_time = ops.max_time(all_events, seconds=False)
 
+            # don't want to deal with extremely long tracks
+            if end_time > TIME_RESOLUTION*MAX_TRACK_TIME_IN_SECONDS:
+                discarded_tracks += 1
+                continue
+
             # get the list of instrument
             instruments = list(ops.get_instruments(all_events).keys())
 
