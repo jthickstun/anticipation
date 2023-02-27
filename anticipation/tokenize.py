@@ -76,8 +76,6 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
     with open(output, 'w') as outfile:
         concatenated_tokens = []
         for j, filename in tqdm(list(enumerate(datafiles)), desc=f'#{idx}', position=idx+1):
-            #if j == 10: break
-
             try:
                 with open(filename, 'r') as f:
                     compound_tokens = [int(token) for token in f.read().split()]
@@ -116,11 +114,6 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
             # get the list of instrument
             instruments = list(ops.get_instruments(all_events).keys())
-
-            # skip sequences more instruments than MIDI channels (16)
-            if len(instruments) > MAX_TRACK_INSTR:
-                discarded_tracks += 1
-                continue
 
             # different random augmentations
             for k in range(augment_factor):
@@ -172,6 +165,12 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                     except OverflowError:
                         # relativized time exceeds MAX_TIME
                         discarded_seqs += 1
+                        continue
+
+                    # skip sequences more instruments than MIDI channels (16)
+                    if len(ops.get_instruments(seq)) > MAX_TRACK_INSTR:
+                        print('ARRR')
+                        discarded_tracks += 1
                         continue
 
                     # if seq contains SEPARATOR, these labels describe the first sequence
