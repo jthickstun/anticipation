@@ -20,6 +20,10 @@ def midi_to_compound(midifile, debug=False):
     for message in midi:
         time += message.time
 
+        # sanity check: negative time?
+        if message.time < 0:
+            raise ValueError
+
         if message.type == 'program_change':
             instruments[message.channel] = message.program
         elif message.type in ['note_on', 'note_off']:
