@@ -119,8 +119,8 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                 else:
                     if len(instruments) > 1:
                         # instrument augmentation: at least one, but not all instruments
-                        j = 1+np.random.randint(len(instruments)-1)
-                        subset = np.random.choice(instruments, j, replace=False)
+                        u = 1+np.random.randint(len(instruments)-1)
+                        subset = np.random.choice(instruments, u, replace=False)
                         events, labels = extract_instruments(all_events, subset)
                     else:
                         # no augmentation
