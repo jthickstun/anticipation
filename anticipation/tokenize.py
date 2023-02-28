@@ -69,7 +69,7 @@ def extract_instruments(all_events, instruments):
 
 def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
     tokens = []
-    discarded_tracks = 0
+    long_tracks = short_tracks = 0
     seqcount = discarded_seqs = rest_count = 0
     np.random.seed(0)
 
@@ -85,31 +85,18 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
             # skip very short sequences
             if len(compound_tokens) < 5*MIN_TRACK_EVENTS:
-                discarded_tracks += 1
+                short_tracks += 1
                 continue
 
-            if min(int(tok) for tok in compound_tokens[0::5]) < 0:
-                discarded_tracks += 1
-                if debug:
-                    print(f'ERROR: corrupted document {filename} (skipping)')
-
-                continue
-
-            try:
-                all_events = compound_to_events(compound_tokens)
-            except ValueError:
-                discarded_tracks += 1
-                if debug:
-                    print(f'ERROR: corrupted document {filename} (skipping)')
-
-                continue
+            assert min(int(tok) for tok in compound_tokens[0::5]) >= 0
+            all_events = compound_to_events(compound_tokens)
 
             # max time before extracting labels
             end_time = ops.max_time(all_events, seconds=False)
 
             # don't want to deal with extremely long tracks
             if end_time > TIME_RESOLUTION*MAX_TRACK_TIME_IN_SECONDS:
-                discarded_tracks += 1
+                long_tracks += 1
                 continue
 
             # get the list of instrument
@@ -169,7 +156,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
                     # skip sequences more instruments than MIDI channels (16)
                     if len(ops.get_instruments(seq)) > MAX_TRACK_INSTR:
-                        discarded_tracks += 1
+                        discarded_seqs += 1
                         continue
 
                     # if seq contains SEPARATOR, these labels describe the first sequence
@@ -183,6 +170,6 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
     if debug:
         fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
-        print(fmt.format(seqcount, discarded_tracks, discarded_seqs, rest_count))
+        print(fmt.format(seqcount, short_tracks+long_tracks, discarded_seqs, rest_count))
 
-    return (seqcount, rest_count, discarded_tracks, discarded_seqs)
+    return (seqcount, rest_count, short_tracks, long_tracks, discarded_seqs)
