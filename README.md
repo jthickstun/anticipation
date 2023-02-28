@@ -40,9 +40,9 @@ python scripts/tokenize-lakh.py $DATAPATH/lmd_full
 
 Define the train/validation/test splits. LakhMidi files are named according to their (hexadecimal) MD5 checksum: our convention is to use files starting with `f` as the test set, files starting with `e` as validation, and the rest of the dataset for training.
 ```
-mv DATAPATH/lmd_full/tokenized-events-e.txt $DATAPATH/valid.txt
-mv DATAPATH/lmd_full/tokenized-events-f.txt $DATAPATH/test.txt
-cat DATAPATH/lmd_full/tokenized-events-*.txt > $DATAPATH/lmd_full/train-ordered.txt
+mv $DATAPATH/lmd_full/tokenized-events-e.txt $DATAPATH/valid.txt
+mv $DATAPATH/lmd_full/tokenized-events-f.txt $DATAPATH/test.txt
+cat $DATAPATH/lmd_full/tokenized-events-*.txt > $DATAPATH/lmd_full/train-ordered.txt
 ```
 
 Finally, we must shuffle our training data. For this shuffle procedure, your have a machine with enough RAM to read the whole training data file.
