@@ -18,6 +18,7 @@ def main(args):
     print(f'  anticipation interval = {DELTA}s')
     print(f'  augment = {AUGMENT_FACTOR}x')
     print(f'  max track length = {MAX_TRACK_TIME_IN_SECONDS}s')
+    print(f'  min track length = {MIN_TRACK_TIME_IN_SECONDS}s')
     print(f'  min track events = {MIN_TRACK_EVENTS}')
 
     paths = [os.path.join(args.datadir, s) for s in LAKH_SPLITS]

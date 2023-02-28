@@ -75,7 +75,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
     with open(output, 'w') as outfile:
         concatenated_tokens = []
-        for j, filename in tqdm(list(enumerate(datafiles)), desc=f'#{idx}', position=idx+1):
+        for j, filename in tqdm(list(enumerate(datafiles)), desc=f'#{idx}', position=idx+1, leave=True):
             try:
                 with open(filename, 'r') as f:
                     compound_tokens = [int(token) for token in f.read().split()]
@@ -83,7 +83,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
             except FileNotFoundError:
                 continue
 
-            # skip very short sequences
+            # skip sequences with very few events
             if len(compound_tokens) < 5*MIN_TRACK_EVENTS:
                 short_tracks += 1
                 continue
@@ -97,6 +97,11 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
             # don't want to deal with extremely long tracks
             if end_time > TIME_RESOLUTION*MAX_TRACK_TIME_IN_SECONDS:
                 long_tracks += 1
+                continue
+
+            # don't want to deal with extremely short tracks
+            if end_time < TIME_RESOLUTION*MIN_TRACK_TIME_IN_SECONDS:
+                short_tracks += 1
                 continue
 
             # get the list of instrument
