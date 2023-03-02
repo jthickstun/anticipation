@@ -55,9 +55,10 @@ def extract_instruments(all_events, instruments):
     events = []
     labels = []
     for time, dur, note in zip(all_events[0::3],all_events[1::3],all_events[2::3]):
-        assert(note not in [SEPARATOR, REST]) # shouldn't be in the sequence yet
-        instr = (note-NOTE_OFFSET)//2**7
+        assert(note < LABEL_OFFSET)           # shouldn't be in the sequence yet
+        assert(note not in [SEPARATOR, REST]) # these shouldn't either
 
+        instr = (note-NOTE_OFFSET)//2**7
         if instr in instruments:
             # mark this event as a label
             labels.extend([LABEL_OFFSET+time, LABEL_OFFSET+dur, LABEL_OFFSET+note])
