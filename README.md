@@ -1,6 +1,6 @@
 # Anticipatory Music Infilling Models
 
-Implementation of the anticipatory infilling models described in Anticipatory Autoregressive Models for Controllabel Music Generation.
+Implementation of the anticipatory infilling models described in Anticipatory Autoregressive Models for Controllable Music Generation.
 
 by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlwh.org/), [__Chris Donahue__](https://chrisdonahue.com/), and [__Percy Liang__](https://cs.stanford.edu/~pliang/).
 
