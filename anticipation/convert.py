@@ -208,3 +208,6 @@ def events_to_compound(tokens, debug=False):
 
 def events_to_midi(tokens, debug=False):
     return compound_to_midi(events_to_compound(tokens))
+
+def midi_to_events(midifile, debug=False):
+    return compound_to_events(midi_to_compound(midifile))
