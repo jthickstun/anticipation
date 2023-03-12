@@ -86,9 +86,8 @@ def add_token(model, control, tokens, top_p, current_time, debug=False):
 
 
 def generate(model, end_time, prompt=None, labels=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
-    tokens = []
-    if prompt:
-        tokens = prompt.copy()
+    prompt = ops.pad(prompt)
+    tokens, labels = ops.anticipate(prompt, labels)
 
     # fast-forward
     current_time = 0
@@ -123,11 +122,11 @@ def generate(model, end_time, prompt=None, labels=None, top_p=1.0, debug=False, 
 
             new_token = add_token(model, control, tokens, top_p, current_time)
             new_time = new_token[0] - TIME_OFFSET
-            new_note = new_token[2] - NOTE_OFFSET
-            new_instr = new_note//2**7
-            new_pitch = new_note - (2**7)*new_instr
 
             if debug:
+                new_note = new_token[2] - NOTE_OFFSET
+                new_instr = new_note//2**7
+                new_pitch = new_note - (2**7)*new_instr
                 print('C', new_time, new_instr, new_pitch)
 
             tokens.extend(new_token)
@@ -136,4 +135,4 @@ def generate(model, end_time, prompt=None, labels=None, top_p=1.0, debug=False, 
             current_time = new_time
             progress.update(dt)
 
-    return tokens
+    return ops.unpad(tokens), labels

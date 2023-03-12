@@ -23,7 +23,8 @@ INSTR = 66      # Tenor Sax
 #INSTR = 34      # Electric Bass
 
 DATA = "/nlp/scr/jthickstun/anticipation/datasets/arrival/test.txt"
-CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/spring-water-227/step-100000/hf"
+CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/jumping-jazz-234/step-100000/hf"
+#CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/genial-firefly-238/step-100000/hf"
 
 t0 = time.time()
 model = AutoModelForCausalLM.from_pretrained(CHECKPOINT).cuda()
@@ -63,17 +64,16 @@ for i in range(N):
 
     print(i, ops.max_time(tokens))
 
+    tokens = ops.unpad(tokens) # training sequences are padded; don't want that
     tokens = ops.clip(tokens, 0, LENGTH+DELTA+1)
     filename = f'output/original-{i}.mid'
     print(instruments, len(tokens), control[0]==ANTICIPATE)
     mid = events_to_midi(ops.clip(tokens, 0, LENGTH))
     mid.save(filename)
 
-    tokens = ops.unpad(tokens)
     tokens, labels = extract_instruments(tokens, [INSTR])
-    tokens = ops.pad(tokens, LENGTH)
     prompt = ops.clip(tokens, 0, DELTA, clip_duration=False)  # DELTA second prompt
-    prompt, labels = ops.anticipate(prompt, ops.clip(labels, DELTA, LENGTH+DELTA+1))  # anticipate labels
+    labels = ops.clip(labels, DELTA, LENGTH+DELTA+1)
 
     #ops.print_tokens(prompt)
 
@@ -84,7 +84,7 @@ for i in range(N):
     for j in range(K):
         filename = f'output/generated-{i}-v{j}.mid'
         try:
-            generated_tokens = generate(model, LENGTH, prompt, labels, top_p=.98, debug=False)
+            generated_tokens, _ = generate(model, LENGTH, prompt, labels, top_p=.98, debug=False)
             print(f'Sampling time: {time.time()-t0} seconds')
             mid = events_to_midi(ops.clip(generated_tokens, 0, LENGTH))
             mid.save(filename)
