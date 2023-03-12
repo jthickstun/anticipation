@@ -96,9 +96,9 @@ def resequence(tokens):
     return new_tokens
 
 
-def pad(tokens, end_time, density=TIME_RESOLUTION):
+def pad(tokens, end_time=None, density=TIME_RESOLUTION):
+    end_time = TIME_OFFSET+(end_time if end_time else max_time(tokens, seconds=False))
     new_tokens = []
-    end_time = TIME_OFFSET+end_time
     previous_time = TIME_OFFSET+0
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         # must pad before separation, anticipation
