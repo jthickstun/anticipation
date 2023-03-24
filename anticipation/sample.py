@@ -117,8 +117,9 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
     if debug:
         print('Current time:', current_time)
 
+    start_time = int(TIME_RESOLUTION*start_time)
     end_time = int(TIME_RESOLUTION*end_time)
-    with tqdm(range(end_time-current_time)) as progress:
+    with tqdm(range(end_time-start_time)) as progress:
         if labels:
             atime, adur, anote = labels[0:3]
             anticipated_tokens = labels[3:]
