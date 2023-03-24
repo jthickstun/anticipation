@@ -23,8 +23,8 @@ INSTR = 66      # Tenor Sax
 #INSTR = 34      # Electric Bass
 
 DATA = "/nlp/scr/jthickstun/anticipation/datasets/arrival/test.txt"
-CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/jumping-jazz-234/step-100000/hf"
-#CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/genial-firefly-238/step-100000/hf"
+#CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/jumping-jazz-234/step-100000/hf"
+CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/genial-firefly-238/step-100000/hf"
 
 t0 = time.time()
 model = AutoModelForCausalLM.from_pretrained(CHECKPOINT).cuda()
@@ -62,10 +62,7 @@ for i in range(N):
         if ops.max_time(tokens, seconds=False, instr=INSTR) >= LENGTH*TIME_RESOLUTION:
             break # found one
 
-    print(i, ops.max_time(tokens))
-
     tokens = ops.unpad(tokens) # training sequences are padded; don't want that
-    tokens = ops.clip(tokens, 0, LENGTH+DELTA+1)
     filename = f'output/original-{i}.mid'
     print(instruments, len(tokens), control[0]==ANTICIPATE)
     mid = events_to_midi(ops.clip(tokens, 0, LENGTH))
@@ -73,9 +70,6 @@ for i in range(N):
 
     tokens, labels = extract_instruments(tokens, [INSTR])
     prompt = ops.clip(tokens, 0, DELTA, clip_duration=False)  # DELTA second prompt
-    labels = ops.clip(labels, DELTA, LENGTH+DELTA+1)
-
-    #ops.print_tokens(prompt)
 
     filename = f'output/conditional-{i}.mid'
     mid = events_to_midi(ops.clip(prompt + labels, 0, LENGTH))
@@ -84,9 +78,11 @@ for i in range(N):
     for j in range(K):
         filename = f'output/generated-{i}-v{j}.mid'
         try:
-            generated_tokens, _ = generate(model, LENGTH, prompt, labels, top_p=.98, debug=False)
+            t0 = time.time()
+            generated_tokens = generate(model, DELTA, LENGTH, prompt, labels, top_p=.98, debug=False)
             print(f'Sampling time: {time.time()-t0} seconds')
-            mid = events_to_midi(ops.clip(generated_tokens, 0, LENGTH))
+            #ops.print_tokens(ops.anticipate(generated_tokens, labels)[0])
+            mid = events_to_midi(ops.clip(generated_tokens + labels, 0, LENGTH))
             mid.save(filename)
         except Exception:
             print('Sampling Error')

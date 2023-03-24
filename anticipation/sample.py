@@ -85,17 +85,38 @@ def add_token(model, control, tokens, top_p, current_time, debug=False):
     return new_token
 
 
-def generate(model, end_time, prompt=None, labels=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
-    prompt = ops.pad(prompt)
-    tokens, labels = ops.anticipate(prompt, labels)
+def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
+    # prompt is events up to start_time
+    prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False), start_time)
 
-    # fast-forward
-    current_time = 0
-    for (time, _, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
-        if note < LABEL_OFFSET:
-            current_time = time - TIME_OFFSET
+    # treat events beyond start_time as labels
+    future = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False)
+    if debug:
+        print('Future')
+        ops.print_tokens(future)
 
-    control = [ANTICIPATE] if len(labels) > 0 else [AUTOREGRESS]
+    # clip labels that preceed the sequence
+    labels = ops.clip(labels, DELTA, ops.max_time(labels, seconds=False), clip_duration=False)
+
+    if debug:
+        print('Labels')
+        ops.print_tokens(labels)
+
+    control = [ANTICIPATE] if len(labels) > 0 or len(future) > 0 else [AUTOREGRESS]
+    if debug:
+        print('AR Mode' if control[0] == AUTOREGRESS else 'AAR Mode')
+
+    # interleave the labels with the events
+    tokens, labels = ops.anticipate(prompt, ops.sort(labels + [LABEL_OFFSET+token for token in future]))
+
+    if debug:
+        print('Prompt')
+        ops.print_tokens(tokens)
+
+    current_time = ops.max_time(prompt, seconds=False)
+    if debug:
+        print('Current time:', current_time)
+
     end_time = int(TIME_RESOLUTION*end_time)
     with tqdm(range(end_time-current_time)) as progress:
         if labels:
@@ -106,11 +127,13 @@ def generate(model, end_time, prompt=None, labels=None, top_p=1.0, debug=False, 
             # nothing to anticipate
             anticipated_time = MAX_TIME
 
-        while current_time < end_time:
+        while True:
             while current_time >= anticipated_time - delta:
                 tokens.extend([atime, adur, anote])
                 if debug:
-                    print('A', anticipated_time)
+                    note = anote - ANOTE_OFFSET
+                    instr = note//2**7
+                    print('A', atime - ATIME_OFFSET, adur - ADUR_OFFSET, instr, note - (2**7)*instr)
 
                 if len(anticipated_tokens) > 0:
                     atime, adur, anote = anticipated_tokens[0:3]
@@ -120,14 +143,16 @@ def generate(model, end_time, prompt=None, labels=None, top_p=1.0, debug=False, 
                     # nothing more to anticipate
                     anticipated_time = MAX_TIME
 
-            new_token = add_token(model, control, tokens, top_p, current_time)
+            new_token = add_token(model, control, tokens, top_p, max(start_time,current_time))
             new_time = new_token[0] - TIME_OFFSET
+            if new_time >= end_time:
+                break
 
             if debug:
                 new_note = new_token[2] - NOTE_OFFSET
                 new_instr = new_note//2**7
                 new_pitch = new_note - (2**7)*new_instr
-                print('C', new_time, new_instr, new_pitch)
+                print('C', new_time, new_token[1] - DUR_OFFSET, new_instr, new_pitch)
 
             tokens.extend(new_token)
             dt = new_time - current_time
@@ -135,4 +160,5 @@ def generate(model, end_time, prompt=None, labels=None, top_p=1.0, debug=False, 
             current_time = new_time
             progress.update(dt)
 
-    return ops.unpad(tokens), labels
+    events, _ = ops.split(tokens)
+    return ops.sort(ops.unpad(events) + future)

@@ -34,6 +34,7 @@ def print_tokens(tokens):
             print(j, tm, dur, instr, pitch, '(A)')
 
 
+# TODO: seconds flag
 def clip(tokens, start, end, clip_duration=True):
     new_tokens = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
@@ -72,28 +73,31 @@ def mask(tokens, start, end):
     return new_tokens
 
 
-# FIXME
-def resequence(tokens):
-    new_tokens = []
-    anticipated = []
+def sort(tokens):
+    """ sort sequence of events or labels (but not both) """
+
+    times = tokens[0::3]
+    indices = sorted(range(len(times)), key=times.__getitem__)
+
+    sorted_tokens = []
+    for idx in indices:
+        sorted_tokens.extend(tokens[3*idx:3*(idx+1)])
+
+    return sorted_tokens
+
+
+def split(tokens):
+    """ split a sequence into events and labels """
+
+    events = []
+    labels = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
-        if note < BASE_OFFSET:
-            # anticipated token
-            anticipated.extend([time, dur, note])
+        if note < LABEL_OFFSET:
+            events.extend([time, dur, note])
         else:
-            while anticipated and anticipated[0] - TIME_OFFSET < time - BASE_OFFSET - TIME_OFFSET:
-                atime, adur, anote = anticipated[0:3]
-                new_tokens.extend([BASE_OFFSET+atime, BASE_OFFSET+adur, BASE_OFFSET+anote])
-                anticipated = anticipated[3:]
+            labels.extend([time, dur, note])
 
-            new_tokens.extend([time, dur, note])
-
-    while anticipated and anticipated[0] - TIME_OFFSET < time:
-        atime, adur, anote = anticipated[0:3]
-        new_tokens.extend([BASE_OFFSET+atime, BASE_OFFSET+adur, BASE_OFFSET+anote])
-        anticipated = anticipated[3:]
-
-    return new_tokens
+    return events, labels
 
 
 def pad(tokens, end_time=None, density=TIME_RESOLUTION):
