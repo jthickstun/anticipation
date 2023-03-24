@@ -15,6 +15,8 @@ np.random.seed(2)
 N = 10          # number of examples
 K = 1           # number of generations per example
 LENGTH = 20     # length of the clip to sample (in seconds)
+START = 5
+END = 15
 
 DATA = "/nlp/scr/jthickstun/anticipation/datasets/arrival/test.txt"
 CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/jumping-jazz-234/step-100000/hf"
@@ -45,27 +47,21 @@ for i in range(N):
     print(i, ops.max_time(tokens))
 
     tokens = ops.unpad(tokens) # training sequences are padded; don't want that
-    tokens = ops.clip(tokens, 0, LENGTH+DELTA+1)
     filename = f'output/original-{i}.mid'
     print(len(tokens), control[0]==ANTICIPATE)
     mid = events_to_midi(ops.clip(tokens, 0, LENGTH))
     mid.save(filename)
 
-    start, end = 5, 15
-    prompt = ops.clip(tokens, 0, start, clip_duration=False)
-    labels = ops.clip(tokens, end, LENGTH, clip_duration=False)
-    labels = [LABEL_OFFSET+token for token in labels]
-
-    #ops.print_tokens(prompt)
-
     filename = f'output/conditional-{i}.mid'
-    mid = events_to_midi(ops.clip(prompt + labels, 0, LENGTH))
+    tokens = ops.clip(tokens, 0, START, clip_duration=False) \
+           + ops.clip(tokens, END, ops.max_time(tokens), clip_duration=False)
+    mid = events_to_midi(ops.clip(tokens, 0, LENGTH))
     mid.save(filename)
 
     for j in range(K):
         filename = f'output/generated-{i}-v{j}.mid'
         try:
-            generated_tokens, _ = generate(model, LENGTH, prompt, labels, top_p=.98, debug=False)
+            generated_tokens = generate(model, START, END, tokens, [], top_p=.98, debug=False)
             print(f'Sampling time: {time.time()-t0} seconds')
             mid = events_to_midi(ops.clip(generated_tokens, 0, LENGTH))
             mid.save(filename)
