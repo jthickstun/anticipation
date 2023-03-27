@@ -86,6 +86,12 @@ def add_token(model, control, tokens, top_p, current_time, debug=False):
 
 
 def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
+    if inputs is None:
+        inputs = []
+
+    if labels is None:
+        labels = []
+
     # prompt is events up to start_time
     prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False), start_time)
 
