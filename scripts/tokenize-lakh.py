@@ -6,10 +6,12 @@ from glob import glob
 from tqdm import tqdm
 
 from anticipation.config import *
-from anticipation.tokenize import tokenize
+from anticipation.tokenize import tokenize, tokenize_ia
 
 def main(args):
+    encoding = 'interarrival' if args.interarrival else 'arrival'
     print('Tokenizing LakhMIDI')
+    print(f'  encoding type: {encoding}')
     print(f'  train split: {[s for s in LAKH_SPLITS if s not in LAKH_VALID + LAKH_TEST]}')
     print(f'  validation split: {LAKH_VALID}')
     print(f'  test split: {LAKH_TEST}')
@@ -30,8 +32,9 @@ def main(args):
 
     # parallel tokenization drops the last chunk of < M tokens
     # if concerned about waste: process larger groups of datafiles
+    func = tokenize_ia if args.interarrival else tokenize
     with Pool(processes=PREPROC_WORKERS, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
-        results = pool.starmap(tokenize, zip(files, outputs, augment, range(len(LAKH_SPLITS))))
+        results = pool.starmap(func, zip(files, outputs, augment, range(len(LAKH_SPLITS))))
 
     seq_count, rest_count, too_short, too_long, discarded_seqs = (sum(x) for x in zip(*results))
     rest_ratio = round(100*float(rest_count)/(seq_count*M),2)
@@ -49,5 +52,8 @@ def main(args):
 if __name__ == '__main__':
     parser = ArgumentParser(description='tokenizes a MIDI dataset')
     parser.add_argument('datadir', help='directory containing preprocessed MIDI to tokenize')
+    parser.add_argument('-i', '--interarrival',
+            action='store_true',
+            help='request interarrival-time enocoding (default to arrival-time encoding)')
 
     main(parser.parse_args())

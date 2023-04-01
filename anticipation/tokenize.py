@@ -5,7 +5,7 @@ import numpy as np
 from anticipation import ops
 from anticipation.config import *
 from anticipation.vocab import *
-from anticipation.convert import compound_to_events
+from anticipation.convert import compound_to_events, midi_to_interarrival
 
 
 def extract_spans(all_events, rate):
@@ -66,6 +66,67 @@ def extract_instruments(all_events, instruments):
             events.extend([time, dur, note])
 
     return events, labels
+
+
+def tokenize_ia(datafiles, output, augment_factor, idx=0, debug=False):
+    assert augment_factor == 1 # can't augment interarrival-tokenized data
+
+    long_tracks = short_tracks = 0
+    seqcount = discarded_instr = rest_count = 0
+    np.random.seed(0)
+
+    with open(output, 'w') as outfile:
+        concatenated_tokens = []
+        for j, filename in tqdm(list(enumerate(datafiles)), desc=f'#{idx}', position=idx+1, leave=True):
+            try:
+                with open(filename, 'r') as f:
+                    compound_tokens = [int(token) for token in f.read().split()]
+
+            except FileNotFoundError:
+                continue
+
+            # skip sequences with very few events
+            if len(compound_tokens) < 5*MIN_TRACK_EVENTS:
+                short_tracks += 1
+                continue
+
+            assert min(int(tok) for tok in compound_tokens[0::5]) >= 0
+            all_events = compound_to_events(compound_tokens)
+
+            end_time = ops.max_time(all_events, seconds=False)
+
+            # don't want to deal with extremely long tracks
+            if end_time > TIME_RESOLUTION*MAX_TRACK_TIME_IN_SECONDS:
+                long_tracks += 1
+                continue
+
+            # don't want to deal with extremely short tracks
+            if end_time < TIME_RESOLUTION*MIN_TRACK_TIME_IN_SECONDS:
+                short_tracks += 1
+                continue
+
+            # skip sequences more instruments than MIDI channels (16)
+            if len(ops.get_instruments(all_events)) > MAX_TRACK_INSTR:
+                discarded_instr += 1
+                continue
+
+            filename = filename[:-len('.compound.txt')] # get the original MIDI
+            tokens = midi_to_interarrival(filename)     # already parsed; shouldn't raise an exception
+            tokens[0:0] = [MIDI_SEPARATOR]
+            concatenated_tokens.extend(tokens)
+
+            # write out full sequences to file
+            while len(concatenated_tokens) >= CONTEXT_SIZE:
+                seq = concatenated_tokens[0:CONTEXT_SIZE]
+                concatenated_tokens = concatenated_tokens[CONTEXT_SIZE:]
+                outfile.write(' '.join([str(tok) for tok in seq]) + '\n')
+                seqcount += 1
+
+    if debug:
+        fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
+        print(fmt.format(seqcount, short_tracks+long_tracks, discarded_seqs, rest_count))
+
+    return (seqcount, rest_count, short_tracks, long_tracks, discarded_instr)
 
 
 def tokenize(datafiles, output, augment_factor, idx=0, debug=False):

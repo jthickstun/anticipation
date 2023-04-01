@@ -7,6 +7,113 @@ from anticipation.vocab import *
 from anticipation.ops import unpad
 
 
+def midi_to_interarrival(midifile, debug=False):
+    midi = mido.MidiFile(midifile)
+
+    tokens = []
+    dt = 0
+
+    instruments = defaultdict(int) # default to code 0 = piano
+    tempo = 500000 # default tempo: 500000 microseconds per beat
+    for message in midi:
+        dt += message.time
+
+        # sanity check: negative time?
+        if message.time < 0:
+            raise ValueError
+
+        if message.type == 'program_change':
+            instruments[message.channel] = message.program
+        elif message.type in ['note_on', 'note_off']:
+            delta_ticks = min(round(TIME_RESOLUTION*dt), MAX_INTERARRIVAL-1)
+            if delta_ticks > 0: # if time elapsed since last token
+                tokens.append(MIDI_TIME_OFFSET + delta_ticks) # add a time step event
+
+            # special case: channel 9 is drums!
+            inst = 128 if message.channel == 9 else instruments[message.channel]
+            offset = MIDI_START_OFFSET if message.type == 'note_on' and message.velocity > 0 else MIDI_END_OFFSET
+            tokens.append(offset + (2**7)*inst + message.note)
+            dt = 0
+        elif message.type == 'set_tempo':
+            tempo = message.tempo
+        elif message.type == 'time_signature':
+            pass # we use real time
+        elif message.type in ['aftertouch', 'polytouch', 'pitchwheel', 'sequencer_specific']:
+            pass # we don't attempt to model these
+        elif message.type == 'control_change':
+            pass # this includes pedal and per-track volume: ignore for now
+        elif message.type in ['track_name', 'text', 'end_of_track', 'lyrics', 'key_signature',
+                              'copyright', 'marker', 'instrument_name', 'cue_marker',
+                              'device_name', 'sequence_number']:
+            pass # possibly useful metadata but ignore for now
+        elif message.type == 'channel_prefix':
+            pass # relatively common, but can we ignore this?
+        elif message.type in ['midi_port', 'smpte_offset', 'sysex']:
+            pass # I have no idea what this is
+        else:
+            if debug:
+                print('UNHANDLED MESSAGE', message.type, message)
+
+    return tokens
+
+
+def interarrival_to_midi(tokens, debug=False):
+    mid = mido.MidiFile()
+    mid.ticks_per_beat = 100
+
+    track_idx = {} # maps instrument to (track number, current time)
+    time_in_ticks = 0
+    num_tracks = 0
+    for token in tokens:
+        if token == MIDI_SEPARATOR:
+            continue
+
+        if token < MIDI_START_OFFSET:
+            time_in_ticks += token - MIDI_TIME_OFFSET
+        elif token < MIDI_END_OFFSET:
+            token -= MIDI_START_OFFSET
+            instrument = token // 2**7
+            pitch = token - (2**7)*instrument
+
+            try:
+                track, previous_time, idx = track_idx[instrument]
+            except KeyError:
+                idx = num_tracks
+                previous_time = 0
+                track = mido.MidiTrack()
+                mid.tracks.append(track)
+                if instrument == 128: # drums always go on channel 9
+                    idx = 9
+                    message = mido.Message('program_change', channel=idx, program=0)
+                else:
+                    message = mido.Message('program_change', channel=idx, program=instrument)
+                track.append(message)
+                num_tracks += 1
+                if num_tracks == 9:
+                    num_tracks += 1 # skip the drums track
+
+            track.append(mido.Message('note_on', note=pitch, channel=idx, velocity=96, time=time_in_ticks-previous_time))
+            track_idx[instrument] = (track, time_in_ticks, idx)
+        else:
+            token -= MIDI_END_OFFSET
+            instrument = token // 2**7
+            pitch = token - (2**7)*instrument
+
+            try:
+                track, previous_time, idx = track_idx[instrument]
+            except KeyError:
+                # shouldn't happen because we should have a corresponding onset
+                if debug:
+                    print('IGNORING bad offset')
+
+                continue
+
+            track.append(mido.Message('note_off', note=pitch, channel=idx, time=time_in_ticks-previous_time))
+            track_idx[instrument] = (track, time_in_ticks, idx)
+
+    return mid
+
+
 def midi_to_compound(midifile, debug=False):
     midi = mido.MidiFile(midifile)
 
@@ -70,20 +177,21 @@ def midi_to_compound(midifile, debug=False):
         elif message.type in ['midi_port', 'smpte_offset', 'sysex']:
             pass # I have no idea what this is
         else:
-            if debug: print('UNHANDLED MESSAGE', message.type, message)
+            if debug:
+                print('UNHANDLED MESSAGE', message.type, message)
 
     unclosed_count = 0
     for _,v in open_notes.items():
         unclosed_count += len(v)
 
     if debug and unclosed_count > 0:
-        print('WARNING: {} unclosed notes'.format(unclosed_count))
+        print(f'WARNING: {unclosed_count} unclosed notes')
         print('  ', midifile)
 
     return tokens
 
 
-def compound_to_midi(tokens):
+def compound_to_midi(tokens, debug=False):
     mid = mido.MidiFile()
     mid.ticks_per_beat = TIME_RESOLUTION // 2 # 2 beats/second at quarter=120
 
@@ -124,7 +232,9 @@ def compound_to_midi(tokens):
                     track, previous_time, idx = track_idx[instrument]
                 except KeyError:
                     # shouldn't happen because we should have a corresponding onset
-                    print('IGNORING bad offset')
+                    if debug:
+                        print('IGNORING bad offset')
+
                     continue
 
                 track.append(mido.Message(
@@ -207,7 +317,7 @@ def events_to_compound(tokens, debug=False):
 
 
 def events_to_midi(tokens, debug=False):
-    return compound_to_midi(events_to_compound(tokens))
+    return compound_to_midi(events_to_compound(tokens, debug=debug), debug=debug)
 
 def midi_to_events(midifile, debug=False):
-    return compound_to_events(midi_to_compound(midifile))
+    return compound_to_events(midi_to_compound(midifile, debug=debug))
