@@ -96,6 +96,6 @@ def main(args):
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser(description='prepares a MIDI dataset')
+    parser = ArgumentParser(description='calculate statistics of the intermediate compound representation')
     parser.add_argument('dir', help='directory containing .mid files for training')
     main(parser.parse_args())
