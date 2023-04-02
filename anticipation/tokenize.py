@@ -126,12 +126,12 @@ def tokenize_ia(datafiles, output, augment_factor, idx=0, debug=False):
         fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
         print(fmt.format(seqcount, short_tracks+long_tracks, discarded_seqs, rest_count))
 
-    return (seqcount, rest_count, short_tracks, long_tracks, discarded_instr)
+    return (seqcount, rest_count, short_tracks, long_tracks, discarded_instr, 0)
 
 
 def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
     tokens = []
-    long_tracks = short_tracks = 0
+    long_tracks = short_tracks = discarded_instr = 0
     seqcount = discarded_seqs = rest_count = 0
     np.random.seed(0)
 
@@ -168,6 +168,11 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
             # get the list of instrument
             instruments = list(ops.get_instruments(all_events).keys())
+
+            # skip tracks with more instruments than MIDI channels (16)
+            if len(instruments) > MAX_TRACK_INSTR:
+                discarded_instr += 1
+                continue
 
             # different random augmentations
             for k in range(augment_factor):
@@ -221,11 +226,6 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                         discarded_seqs += 1
                         continue
 
-                    # skip sequences more instruments than MIDI channels (16)
-                    if len(ops.get_instruments(seq)) > MAX_TRACK_INSTR:
-                        discarded_seqs += 1
-                        continue
-
                     # if seq contains SEPARATOR, these labels describe the first sequence
                     seq.insert(0, z)
 
@@ -237,6 +237,6 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
     if debug:
         fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
-        print(fmt.format(seqcount, short_tracks+long_tracks, discarded_seqs, rest_count))
+        print(fmt.format(seqcount, short_tracks+long_tracks+discarded_instr, discarded_seqs, rest_count))
 
-    return (seqcount, rest_count, short_tracks, long_tracks, discarded_seqs)
+    return (seqcount, rest_count, short_tracks, long_tracks, discarded_instr, discarded_seqs)

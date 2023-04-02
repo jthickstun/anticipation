@@ -36,7 +36,7 @@ def main(args):
     with Pool(processes=PREPROC_WORKERS, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
         results = pool.starmap(func, zip(files, outputs, augment, range(len(LAKH_SPLITS))))
 
-    seq_count, rest_count, too_short, too_long, discarded_seqs = (sum(x) for x in zip(*results))
+    seq_count, rest_count, too_short, too_long, too_manyinstr, discarded_seqs = (sum(x) for x in zip(*results))
     rest_ratio = round(100*float(rest_count)/(seq_count*M),2)
 
     print('Tokenization complete.')
@@ -45,6 +45,7 @@ def main(args):
     print(f'  => Discarded {too_short+too_long} event sequences')
     print(f'      - {too_short} too short')
     print(f'      - {too_long} too long')
+    print(f'      - {too_manyinstr} too many instruments')
     print(f'  => Discarded {discarded_seqs} training sequences')
 
     print('Remember to shuffle the training split!')
