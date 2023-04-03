@@ -247,6 +247,7 @@ def compound_to_midi(tokens, debug=False):
 
 def compound_to_events(tokens):
     assert len(tokens) % 5 == 0
+    tokens = tokens.copy()
 
     # remove velocities
     del tokens[4::5]
