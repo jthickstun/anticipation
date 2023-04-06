@@ -68,46 +68,44 @@ def extract_instruments(all_events, instruments):
     return events, labels
 
 
+def maybe_tokenize(compound_tokens):
+    # skip sequences with very few events
+    if len(compound_tokens) < COMPOUND_SIZE*MIN_TRACK_EVENTS:
+        return None, 1 # short track
+
+    events = compound_to_events(compound_tokens)
+    end_time = ops.max_time(events, seconds=False)
+
+    # don't want to deal with extremely short tracks
+    if end_time < TIME_RESOLUTION*MIN_TRACK_TIME_IN_SECONDS:
+        return None, 1 # short track
+
+    # don't want to deal with extremely long tracks
+    if end_time > TIME_RESOLUTION*MAX_TRACK_TIME_IN_SECONDS:
+        return None, 2 # long track
+
+    # skip sequences more instruments than MIDI channels (16)
+    if len(ops.get_instruments(events)) > MAX_TRACK_INSTR:
+        return None, 3 # too many instruments
+
+    return events, 0
+
+
 def tokenize_ia(datafiles, output, augment_factor, idx=0, debug=False):
     assert augment_factor == 1 # can't augment interarrival-tokenized data
 
-    long_tracks = short_tracks = 0
-    seqcount = discarded_instr = rest_count = 0
+    seqcount = rest_count = 0
+    stats = 4*[0] # (short, long, too many instruments, inexpressible)
     np.random.seed(0)
 
     with open(output, 'w') as outfile:
         concatenated_tokens = []
         for j, filename in tqdm(list(enumerate(datafiles)), desc=f'#{idx}', position=idx+1, leave=True):
-            try:
-                with open(filename, 'r') as f:
-                    compound_tokens = [int(token) for token in f.read().split()]
+            with open(filename, 'r') as f:
+                _, status = maybe_tokenize([int(token) for token in f.read().split()])
 
-            except FileNotFoundError:
-                continue
-
-            # skip sequences with very few events
-            if len(compound_tokens) < 5*MIN_TRACK_EVENTS:
-                short_tracks += 1
-                continue
-
-            assert min(int(tok) for tok in compound_tokens[0::5]) >= 0
-            all_events = compound_to_events(compound_tokens)
-
-            end_time = ops.max_time(all_events, seconds=False)
-
-            # don't want to deal with extremely long tracks
-            if end_time > TIME_RESOLUTION*MAX_TRACK_TIME_IN_SECONDS:
-                long_tracks += 1
-                continue
-
-            # don't want to deal with extremely short tracks
-            if end_time < TIME_RESOLUTION*MIN_TRACK_TIME_IN_SECONDS:
-                short_tracks += 1
-                continue
-
-            # skip sequences more instruments than MIDI channels (16)
-            if len(ops.get_instruments(all_events)) > MAX_TRACK_INSTR:
-                discarded_instr += 1
+            if status > 0:
+                stats[status-1] += 1
                 continue
 
             filename = filename[:-len('.compound.txt')] # get the original MIDI
@@ -124,55 +122,29 @@ def tokenize_ia(datafiles, output, augment_factor, idx=0, debug=False):
 
     if debug:
         fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
-        print(fmt.format(seqcount, short_tracks+long_tracks, discarded_seqs, rest_count))
+        print(fmt.format(seqcount, stats[0]+stats[1]+stats[2], stats[3], rest_count))
 
-    return (seqcount, rest_count, short_tracks, long_tracks, discarded_instr, 0)
+    return (seqcount, rest_count, stats[0], stats[1], stats[2], stats[3])
 
 
 def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
     tokens = []
-    long_tracks = short_tracks = discarded_instr = 0
-    seqcount = discarded_seqs = rest_count = 0
+    seqcount = rest_count = 0
+    stats = 4*[0] # (short, long, too many instruments, inexpressible)
     np.random.seed(0)
 
     with open(output, 'w') as outfile:
         concatenated_tokens = []
         for j, filename in tqdm(list(enumerate(datafiles)), desc=f'#{idx}', position=idx+1, leave=True):
-            try:
-                with open(filename, 'r') as f:
-                    compound_tokens = [int(token) for token in f.read().split()]
+            with open(filename, 'r') as f:
+                all_events, status = maybe_tokenize([int(token) for token in f.read().split()])
 
-            except FileNotFoundError:
+            if status > 0:
+                stats[status-1] += 1
                 continue
 
-            # skip sequences with very few events
-            if len(compound_tokens) < 5*MIN_TRACK_EVENTS:
-                short_tracks += 1
-                continue
-
-            assert min(int(tok) for tok in compound_tokens[0::5]) >= 0
-            all_events = compound_to_events(compound_tokens)
-
-            # max time before extracting labels
-            end_time = ops.max_time(all_events, seconds=False)
-
-            # don't want to deal with extremely long tracks
-            if end_time > TIME_RESOLUTION*MAX_TRACK_TIME_IN_SECONDS:
-                long_tracks += 1
-                continue
-
-            # don't want to deal with extremely short tracks
-            if end_time < TIME_RESOLUTION*MIN_TRACK_TIME_IN_SECONDS:
-                short_tracks += 1
-                continue
-
-            # get the list of instrument
             instruments = list(ops.get_instruments(all_events).keys())
-
-            # skip tracks with more instruments than MIDI channels (16)
-            if len(instruments) > MAX_TRACK_INSTR:
-                discarded_instr += 1
-                continue
+            end_time = ops.max_time(all_events, seconds=False)
 
             # different random augmentations
             for k in range(augment_factor):
@@ -223,7 +195,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                         assert ops.min_time(seq, seconds=False) == 0 
                     except OverflowError:
                         # relativized time exceeds MAX_TIME
-                        discarded_seqs += 1
+                        stats[3] += 1
                         continue
 
                     # if seq contains SEPARATOR, these labels describe the first sequence
@@ -237,6 +209,8 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
     if debug:
         fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
-        print(fmt.format(seqcount, short_tracks+long_tracks+discarded_instr, discarded_seqs, rest_count))
+        print(fmt.format(seqcount, stats[0]+stats[1]+stats[2], stats[3], rest_count))
 
-    return (seqcount, rest_count, short_tracks, long_tracks, discarded_instr, discarded_seqs)
+    return (seqcount, rest_count, stats[0], stats[1], stats[2], stats[3])
+
+
