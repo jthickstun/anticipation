@@ -5,7 +5,7 @@ import numpy as np
 from transformers import GPT2LMHeadModel, AutoModelForCausalLM
 
 from anticipation import ops
-from anticipation.sample import generate
+from anticipation.sample import generate, generate_ar
 from anticipation.tokenize import extract_instruments
 from anticipation.convert import events_to_midi
 from anticipation.config import *
@@ -13,8 +13,8 @@ from anticipation.vocab import *
 
 np.random.seed(2)
 
-N = 10          # number of examples
-K = 1           # number of generations per example
+N = 20          # number of examples
+K = 3           # number of generations per example
 LENGTH = 20     # length of the clip to sample (in seconds)
 
 # instrument to condition on
@@ -24,7 +24,12 @@ INSTR = 66      # Tenor Sax
 
 DATA = "/nlp/scr/jthickstun/anticipation/datasets/arrival/test.txt"
 #CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/jumping-jazz-234/step-100000/hf"
-CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/genial-firefly-238/step-100000/hf"
+#CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/genial-firefly-238/step-100000/hf"
+CHECKPOINT="/nlp/scr/jthickstun/anticipation/checkpoints/dainty-elevator-270/step-200000/hf"
+
+baseline = True
+if basline:
+    print('Generating BASELINE samples')
 
 t0 = time.time()
 model = AutoModelForCausalLM.from_pretrained(CHECKPOINT).cuda()
@@ -79,10 +84,14 @@ for i in range(N):
         filename = f'output/generated-{i}-v{j}.mid'
         try:
             t0 = time.time()
-            generated_tokens = generate(model, DELTA, LENGTH, prompt, labels, top_p=.98, debug=False)
+            if baseline:
+                generated_tokens = generate(model, DELTA, LENGTH, prompt, labels, top_p=.98, debug=False)
+                mid = events_to_midi(ops.clip(generated_tokens, 0, LENGTH))
+            else:
+                generated_tokens = generate(model, DELTA, LENGTH, prompt, labels, top_p=.98, debug=False)
+                mid = events_to_midi(ops.clip(generated_tokens + labels, 0, LENGTH))
+
             print(f'Sampling time: {time.time()-t0} seconds')
-            #ops.print_tokens(ops.anticipate(generated_tokens, labels)[0])
-            mid = events_to_midi(ops.clip(generated_tokens + labels, 0, LENGTH))
             mid.save(filename)
         except Exception:
             print('Sampling Error')
