@@ -177,6 +177,9 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
 
     if labels is None:
         labels = []
+    else:
+        # treat labels as ordinary tokens
+        labels = [token-LABEL_OFFSET for token in labels]
 
     inputs = ops.sort(inputs + labels)
 
@@ -184,7 +187,7 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
     prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False), start_time)
     if debug:
         print('Prompt')
-        ops.print_tokens(tokens)
+        ops.print_tokens(prompt)
 
     # treat events beyond start_time as labels
     labels = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False)
@@ -202,6 +205,7 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
 
     start_time = int(TIME_RESOLUTION*start_time)
     end_time = int(TIME_RESOLUTION*end_time)
+    tokens = prompt
     with tqdm(range(end_time-start_time)) as progress:
         if labels:
             atime, adur, anote = labels[0:3]
@@ -216,6 +220,10 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
             new_time = new_token[0] - TIME_OFFSET
             if new_time >= end_time:
                 break
+
+            dt = new_time - current_time
+            assert dt >= 0
+            current_time = new_time
 
             # backfill anything that should have come before the new token
             while current_time >= anticipated_time:
@@ -240,12 +248,9 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
                 print('C', new_time, new_token[1] - DUR_OFFSET, new_instr, new_pitch)
 
             tokens.extend(new_token)
-            dt = new_time - current_time
-            assert dt >= 0
-            current_time = new_time
             progress.update(dt)
 
     if anticipated_time != MAX_TIME:
         tokens.extend([atime, adur, anote])
 
-    return ops.sort(ops.unpad(events) + labels)
+    return ops.sort(ops.unpad(tokens) + labels)
