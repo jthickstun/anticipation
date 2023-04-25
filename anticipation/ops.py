@@ -264,3 +264,6 @@ def translate(tokens, dt, seconds=False):
         new_tokens.extend([time+dt, dur, note])
 
     return new_tokens
+
+def combine(events, labels):
+  return sort(events + [token - LABEL_OFFSET for token in labels])
