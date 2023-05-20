@@ -18,17 +18,17 @@ We generate prompted completions using an autoregressive model (or an anticipato
 
 First, we randomly select 50 prompts and completions from a collection of completions generated using the FIGARO Music Transformer (stored at $FIGARO). Store these prompts at $PROMPTPATH:
 ```
-python study/prompt-select.py $FIGARO -o $PROMPTPATH -c 50 -s 999 -v
+python humaneval/prompt-select.py $FIGARO -o $PROMPTPATH -c 50 -s 999 -v
 ```
 
 Generate completions using a model stored at $MODELPATH and store the results to $PROMPTPATH/$OUTPUT$:
 ```
-python study/prompt.py $PROMPTPATH $MODELPATH -o $OUTPUT -c 50 -v
+python humaneval/prompt.py $PROMPTPATH $MODELPATH -o $OUTPUT -c 50 -v
 ```
 
 Generate completions using an interarrival-time model:
 ```
-python study/prompt-interarrival.py $PROMPTPATH $MODELPATH $OUTPUT -c 50 -v
+python humaneval/prompt-interarrival.py $PROMPTPATH $MODELPATH $OUTPUT -c 50 -v
 ```
 
 ## Generating clips for the accompaniment round
