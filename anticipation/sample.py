@@ -53,6 +53,19 @@ def future_logits(logits, curtime):
 
     return logits
 
+
+def instr_logits(logits, full_history):
+    """ don't sample more than 16 instruments """
+    instrs = ops.get_instruments(full_history)
+    if len(instrs) < 16:
+        return logits
+
+    for instr in range(MAX_INSTR):
+        if instr not in instrs:
+            logits[NOTE_OFFSET+instr*MAX_PITCH:NOTE_OFFSET+(instr+1)*MAX_PITCH] = -float('inf')
+
+    return logits
+
         
 def add_token(model, control, tokens, top_p, current_time, debug=False):
     assert len(tokens) % 3 == 0
@@ -65,13 +78,16 @@ def add_token(model, control, tokens, top_p, current_time, debug=False):
 
     new_token = []
     with torch.no_grad():
-        for _ in range(3):
-            input_tokens = torch.tensor(control + history + new_token).unsqueeze(0).cuda()
+        for i in range(3):
+            input_tokens = torch.tensor(control + history + new_token).unsqueeze(0).to(model.device)
             logits = model(input_tokens).logits[0,-1]
     
             idx = input_tokens.shape[1]-1
             logits = safe_logits(logits, idx)
-            logits = future_logits(logits, current_time - offset)
+            if i == 0:
+                logits = future_logits(logits, current_time - offset)
+            elif i == 2:
+                logits = instr_logits(logits, tokens)
             logits = nucleus(logits, top_p)
 
             probs = F.softmax(logits, dim=-1)
@@ -91,6 +107,9 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
 
     if labels is None:
         labels = []
+
+    start_time = int(TIME_RESOLUTION*start_time)
+    end_time = int(TIME_RESOLUTION*end_time)
 
     # prompt is events up to start_time
     prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False), start_time)
@@ -123,8 +142,6 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
     if debug:
         print('Current time:', current_time)
 
-    start_time = int(TIME_RESOLUTION*start_time)
-    end_time = int(TIME_RESOLUTION*end_time)
     with tqdm(range(end_time-start_time)) as progress:
         if labels:
             atime, adur, anote = labels[0:3]
@@ -181,6 +198,9 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
         # treat labels as ordinary tokens
         labels = [token-LABEL_OFFSET for token in labels]
 
+    start_time = int(TIME_RESOLUTION*start_time)
+    end_time = int(TIME_RESOLUTION*end_time)
+
     inputs = ops.sort(inputs + labels)
 
     # prompt is events up to start_time
@@ -203,8 +223,6 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
     if debug:
         print('Current time:', current_time)
 
-    start_time = int(TIME_RESOLUTION*start_time)
-    end_time = int(TIME_RESOLUTION*end_time)
     tokens = prompt
     with tqdm(range(end_time-start_time)) as progress:
         if labels:
