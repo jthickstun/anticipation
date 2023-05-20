@@ -21,7 +21,7 @@ First, we randomly select 50 prompts and completions from a collection of comple
 python humaneval/prompt-select.py $FIGARO -o $PROMPTPATH -c 50 -s 999 -v
 ```
 
-Generate completions using a model stored at $MODELPATH and store the results to $PROMPTPATH\/$OUTPUT$:
+Generate completions using a model stored at $MODELPATH and store the results to $PROMPTPATH/$OUTPUT:
 ```
 python humaneval/prompt.py $PROMPTPATH $MODELPATH -o $OUTPUT -c 50 -v
 ```
