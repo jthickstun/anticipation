@@ -204,13 +204,13 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
     inputs = ops.sort(inputs + labels)
 
     # prompt is events up to start_time
-    prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False), start_time)
+    prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False, seconds=False), start_time)
     if debug:
         print('Prompt')
         ops.print_tokens(prompt)
 
     # treat events beyond start_time as labels
-    labels = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False)
+    labels = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False, seconds=False)
     if debug:
         print('Future')
         ops.print_tokens(labels)
