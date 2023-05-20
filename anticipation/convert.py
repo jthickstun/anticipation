@@ -59,7 +59,7 @@ def midi_to_interarrival(midifile, debug=False):
 
 def interarrival_to_midi(tokens, debug=False):
     mid = mido.MidiFile()
-    mid.ticks_per_beat = 100
+    mid.ticks_per_beat = TIME_RESOLUTION // 2 # 2 beats/second at quarter=120
 
     track_idx = {} # maps instrument to (track number, current time)
     time_in_ticks = 0
