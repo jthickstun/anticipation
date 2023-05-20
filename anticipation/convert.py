@@ -115,7 +115,10 @@ def interarrival_to_midi(tokens, debug=False):
 
 
 def midi_to_compound(midifile, debug=False):
-    midi = mido.MidiFile(midifile)
+    if type(midifile) == str:
+        midi = mido.MidiFile(midifile)
+    else:
+        midi = midifile
 
     tokens = []
     note_idx = 0
