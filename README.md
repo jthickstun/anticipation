@@ -81,4 +81,4 @@ rm $DATAPATH/lmd_full/train-ordered.txt
 
 ## Reproducing the Human Evaluation Procedure
 
-See the [humaneval](humaneval) directory for a description of how to reproduce the human evaluations described in the paper.
+See the [humaneval](humaneval) directory for instructions on reproducing data used for human evaluations.
