@@ -34,23 +34,26 @@ def print_tokens(tokens):
             print(j, tm, dur, instr, pitch, '(A)')
 
 
-# TODO: seconds flag
-def clip(tokens, start, end, clip_duration=True):
+def clip(tokens, start, end, clip_duration=True, seconds=True):
+    if seconds:
+        start = int(TIME_RESOLUTION*start)
+        end = int(TIME_RESOLUTION*end)
+
     new_tokens = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         if note < LABEL_OFFSET:
-            this_time = (time - TIME_OFFSET)/float(TIME_RESOLUTION)
-            this_dur = (dur - DUR_OFFSET)/float(TIME_RESOLUTION)
+            this_time = time - TIME_OFFSET
+            this_dur = dur - DUR_OFFSET
         else:
-            this_time = (time - ATIME_OFFSET)/float(TIME_RESOLUTION)
-            this_dur = (dur - ADUR_OFFSET)/float(TIME_RESOLUTION)
+            this_time = time - ATIME_OFFSET
+            this_dur = dur - ADUR_OFFSET
 
         if this_time < start or end < this_time:
             continue
 
         # truncate extended notes
         if clip_duration and end < this_time + this_dur:
-            dur -= int(TIME_RESOLUTION*(this_time + this_dur - end))
+            dur -= this_time + this_dur - end
 
         new_tokens.extend([time, dur, note])
 
