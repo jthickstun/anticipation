@@ -98,7 +98,7 @@ def select_sample(filenames, prompt_length, clip_length, verbose=False):
 def main(args):
     np.random.seed(args.seed)
 
-    print(f'Selecting clips for harmonization from: {args.dir}')
+    print(f'Selecting clips for accompaniment from: {args.dir}')
     filenames = glob(args.dir + '/**/*.mid', recursive=True) \
             + glob(args.dir + '/**/*.midi', recursive=True)
     filenames = sorted(filenames)

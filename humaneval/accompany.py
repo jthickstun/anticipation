@@ -17,22 +17,22 @@ np.random.seed(0)
 
 def main(args):
     if args.anticipatory or args.baseline:
-        print(f'Harmonizing using model checkpoint: {args.model}')
+        print(f'Accompaniment using model checkpoint: {args.model}')
         t0 = time.time()
         model = AutoModelForCausalLM.from_pretrained(args.model).cuda()
         print(f'Loaded model ({time.time()-t0} seconds)')
 
     if args.anticipatory:
-        print(f'Writing outputs to {args.dir}/generated_aar')
+        print(f'Writing outputs to {args.dir}/anticipatory')
         try:
-            os.makedirs(f'{args.dir}/generated_aar')
+            os.makedirs(f'{args.dir}/anticipatory')
         except FileExistsError:
             pass
 
     if args.baseline:
-        print(f'Writing outputs to {args.dir}/generated_ar')
+        print(f'Writing outputs to {args.dir}/autoregressive')
         try:
-            os.makedirs(f'{args.dir}/generated_ar')
+            os.makedirs(f'{args.dir}/autoregressive')
         except FileExistsError:
             pass
 
@@ -43,7 +43,7 @@ def main(args):
         except FileExistsError:
             pass
 
-    print(f'Harmonizing with tracks in index : {args.dir}/index.csv')
+    print(f'Accompanying tracks in index : {args.dir}/index.csv')
     with open(f'{args.dir}/index.csv', newline='') as f:
         reader = csv.reader(f)
         header = next(reader)
@@ -65,17 +65,18 @@ def main(args):
                     generated_tokens = generate(model, args.prompt_length, args.clip_length, prompt, labels, top_p=0.95)
                     output = ops.clip(ops.combine(generated_tokens, labels), 0, args.clip_length)
                     mid = events_to_midi(output)
-                    mid.save(f'{args.dir}/generated_aar/{idx}-clip-v{j}.mid')
+                    mid.save(f'{args.dir}/anticipatory/{idx}-clip-v{j}.mid')
                     if args.visualize:
-                        visualize(output, f'{args.dir}/generated_aar/{idx}-clip-v{j}.png')
+                        visualize(output, f'{args.dir}/anticipatory/{idx}-clip-v{j}.png')
 
                 if args.baseline:
                     generated_tokens = generate_ar(model, args.prompt_length, args.clip_length, prompt, labels, top_p=0.95)
                     output = ops.clip(generated_tokens, 0, args.clip_length)
+                    print(len(generated_tokens), len(output))
                     mid = events_to_midi(output)
-                    mid.save(f'{args.dir}/generated_ar/{idx}-clip-v{j}.mid')
+                    mid.save(f'{args.dir}/autoregressive/{idx}-clip-v{j}.mid')
                     if args.visualize:
-                        visualize(output, f'{args.dir}/generated_ar/{idx}-clip-v{j}.png')
+                        visualize(output, f'{args.dir}/autoregressive/{idx}-clip-v{j}.png')
 
                 if args.retrieve:
                     original_events = midi_to_events(original)
@@ -92,7 +93,7 @@ def main(args):
                         visualize(output, f'{args.dir}/retrieved/{idx}-clip-v{j}.png')
 
 
-                print(f'Harmonized with instrument {melody}. Sampling time: {time.time()-t0} seconds')
+                print(f'Accompanied with instrument {melody}. Sampling time: {time.time()-t0} seconds')
 
 
 if __name__ == '__main__':

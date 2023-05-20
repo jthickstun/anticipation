@@ -19,9 +19,9 @@ def main(args):
     model = AutoModelForCausalLM.from_pretrained(args.model).cuda()
     print(f'Loaded model ({time.time()-t0} seconds)')
 
-    print(f'Writing outputs to {args.dir}/{args.desc}')
+    print(f'Writing outputs to {args.dir}/{args.output}')
     try:
-        os.makedirs(f'{args.dir}/{args.desc}')
+        os.makedirs(f'{args.dir}/{args.output}')
     except FileExistsError:
         pass
 
@@ -41,19 +41,20 @@ def main(args):
                 generated_tokens = generate(model, start_time, args.clip_length, prompt, labels=[], top_p=0.95)
                 output = ops.clip(generated_tokens, 0, args.clip_length)
                 mid = events_to_midi(output)
-                mid.save(f'{args.dir}/{args.desc}/{idx}-clip-v{j}.mid')
+                mid.save(f'{args.dir}/{args.output}/{idx}-clip-v{j}.mid')
                 if args.visualize:
-                    visualize(output, f'{args.dir}/{args.desc}/{idx}-clip-v{j}.png')
+                    visualize(output, f'{args.dir}/{args.output}/{idx}-clip-v{j}.png')
 
 
                 print(f'Generated completion. Sampling time: {time.time()-t0} seconds')
 
 
 if __name__ == '__main__':
-    parser = ArgumentParser(description='generate infilling completions')
+    parser = ArgumentParser(description='generate prompted completions')
     parser.add_argument('dir', help='directory containing an index of MIDI files')
     parser.add_argument('model', help='directory containing an model checkpoint')
-    parser.add_argument('desc', help='description of the model')
+    parser.add_argument('-o', '--output', type=str, default='model',
+            help='model description (the name of the output subdirectory)')
     parser.add_argument('-c', '--count', type=int, default=10,
             help='number of clips to sample')
     parser.add_argument('-m', '--multiplicity', type=int, default=1,

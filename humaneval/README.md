@@ -37,20 +37,20 @@ We generate accompaniments using an anticipatory autoregressive model checkpoint
 
 First, select 50 clips with melodic content:
 ```
-python humaneval/melody-select.py $DATAPATH/lmd_full/f/ -o harmony -c 50 -v
+python humaneval/melody-select.py $DATAPATH/lmd_full/f/ -o accompany -c 50 -v
 ```
 
 Generate anticipatory accompaniments (`-a` flag):
 ```
-python humaneval/harmonize.py harmony --model $MODELPATH -av -c 50
+python humaneval/accompany.py accompany --model $MODELPATH -av -c 50
 ```
 
 Generate the autoregressive baseline (`-b` flag):
 ```
-python humaneval/harmonize.py harmony --model $MODELPATH -bv -c 50
+python humaneval/accompany.py accompany --model $MODELPATH -bv -c 50
 ```
 
 Generate the retrieval baseline (`-r` flag):
 ```
-python humaneval/harmonize.py harmony -d $DATAPATH/lmd_full/f/ -rv -c 50
+python humaneval/accompany.py accompany -d $DATAPATH/lmd_full/f/ -rv -c 50
 ```
