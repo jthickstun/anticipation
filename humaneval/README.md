@@ -14,14 +14,14 @@ python humaneval/harmonize.py qualify -r -d $DATAPATH/lmd_full/f/
 
 ## Generating clips for the prompted completion round
 
-We generate prompted completions using an autoregressive model (or an anticipatory autoresgressive model) checkpoint stored at $MODELPATH.
+We generate prompted completions using an autoregressive model (or an anticipatory autoregressive model) checkpoint stored at $MODELPATH.
 
 First, we randomly select 50 prompts and completions from a collection of completions generated using the FIGARO Music Transformer (stored at $FIGARO). Store these prompts at $PROMPTPATH:
 ```
 python humaneval/prompt-select.py $FIGARO -o $PROMPTPATH -c 50 -s 999 -v
 ```
 
-Generate completions using a model stored at $MODELPATH and store the results to $PROMPTPATH/$OUTPUT$:
+Generate completions using a model stored at $MODELPATH and store the results to $PROMPTPATH\/$OUTPUT$:
 ```
 python humaneval/prompt.py $PROMPTPATH $MODELPATH -o $OUTPUT -c 50 -v
 ```
