@@ -59,8 +59,8 @@ def extract_instruments(all_events, instruments):
     events = []
     controls = []
     for time, dur, note in zip(all_events[0::3],all_events[1::3],all_events[2::3]):
-        assert(note < CONTROL_OFFSET)         # shouldn't be in the sequence yet
-        assert(note not in [SEPARATOR, REST]) # these shouldn't either
+        assert note < CONTROL_OFFSET         # shouldn't be in the sequence yet
+        assert note not in [SEPARATOR, REST] # these shouldn't either
 
         instr = (note-NOTE_OFFSET)//2**7
         if instr in instruments:
@@ -196,7 +196,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                                 seq, -ops.min_time(seq, seconds=False), seconds=False)
 
                         # should have relativized to zero
-                        assert ops.min_time(seq, seconds=False) == 0 
+                        assert ops.min_time(seq, seconds=False) == 0
                     except OverflowError:
                         # relativized time exceeds MAX_TIME
                         stats[3] += 1

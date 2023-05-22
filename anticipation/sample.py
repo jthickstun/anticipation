@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from tqdm import tqdm
 
-import anticipation.ops as ops
+from anticipation import ops
 from anticipation.config import *
 from anticipation.vocab import *
 
@@ -38,7 +38,7 @@ def nucleus(logits, top_p):
 
         # Remove tokens with cumulative probability above the threshold (token with 0 are kept)
         sorted_indices_to_remove = cumulative_probs > top_p
-        
+
         # Shift the indices to the right to keep also the first token above the threshold
         sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1].clone()
         sorted_indices_to_remove[..., 0] = 0
@@ -46,7 +46,7 @@ def nucleus(logits, top_p):
         # scatter sorted tensors to original indexing
         indices_to_remove = sorted_indices_to_remove.scatter(0, sorted_indices, sorted_indices_to_remove)
         logits[indices_to_remove] = -float("inf")
-    
+
     return logits
 
 
@@ -70,10 +70,10 @@ def instr_logits(logits, full_history):
 
     return logits
 
-        
+
 def add_token(model, z, tokens, top_p, current_time, debug=False):
     assert len(tokens) % 3 == 0
-    
+
     history = tokens.copy()
     lookback = max(len(tokens) - 1017, 0)
     history = history[lookback:] # Markov window
@@ -85,7 +85,7 @@ def add_token(model, z, tokens, top_p, current_time, debug=False):
         for i in range(3):
             input_tokens = torch.tensor(z + history + new_token).unsqueeze(0).to(model.device)
             logits = model(input_tokens).logits[0,-1]
-    
+
             idx = input_tokens.shape[1]-1
             logits = safe_logits(logits, idx)
             if i == 0:
@@ -99,7 +99,7 @@ def add_token(model, z, tokens, top_p, current_time, debug=False):
             new_token.append(int(token))
 
     new_token[0] += offset # revert to full sequence timing
-    if debug: 
+    if debug:
         print(f'  OFFSET = {offset}, LEN = {len(history)}, TIME = {tokens[::3][-5:]}')
 
     return new_token

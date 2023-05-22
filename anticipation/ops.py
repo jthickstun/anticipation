@@ -273,4 +273,4 @@ def translate(tokens, dt, seconds=False):
     return new_tokens
 
 def combine(events, controls):
-  return sort(events + [token - CONTROL_OFFSET for token in controls])
+    return sort(events + [token - CONTROL_OFFSET for token in controls])
