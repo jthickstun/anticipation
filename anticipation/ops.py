@@ -230,7 +230,7 @@ def max_time(tokens, seconds=True, instr=None):
 def get_instruments(tokens):
     instruments = defaultdict(int)
     for time, dur, note in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
-        if note >= CONTROL_OFFSET: continue
+        if note >= SPECIAL_OFFSET: continue
 
         if note < LABEL_OFFSET:
             note -= NOTE_OFFSET

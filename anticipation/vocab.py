@@ -15,11 +15,11 @@ ATIME_OFFSET = LABEL_OFFSET + 0
 ADUR_OFFSET = ATIME_OFFSET + MAX_TIME
 ANOTE_OFFSET = ADUR_OFFSET + MAX_DUR
 
-# the control block
-CONTROL_OFFSET = ANOTE_OFFSET + MAX_NOTE
-SEPARATOR = CONTROL_OFFSET
-AUTOREGRESS = CONTROL_OFFSET + 1
-ANTICIPATE = CONTROL_OFFSET + 2
+# the special block
+SPECIAL_OFFSET = ANOTE_OFFSET + MAX_NOTE
+SEPARATOR = SPECIAL_OFFSET
+AUTOREGRESS = SPECIAL_OFFSET + 1
+ANTICIPATE = SPECIAL_OFFSET + 2
 VOCAB_SIZE = ANTICIPATE+1
 
 # interarrival-time (MIDI-like) vocab
@@ -40,7 +40,7 @@ if __name__ == '__main__':
     print('  -> anticipated time offset :', ATIME_OFFSET)
     print('  -> anticipated duration offset :', ADUR_OFFSET)
     print('  -> anticipated note offset :', ANOTE_OFFSET)
-    print('Control Token Offset: ', CONTROL_OFFSET)
+    print('Special Token Offset: ', SPECIAL_OFFSET)
     print('  -> separator token: ', SEPARATOR)
     print('  -> autoregression flag: ', AUTOREGRESS)
     print('  -> anticipation flag: ', ANTICIPATE)

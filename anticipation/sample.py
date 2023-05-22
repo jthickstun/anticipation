@@ -9,8 +9,8 @@ from anticipation.vocab import *
 
 
 def safe_logits(logits, idx):
-    logits[LABEL_OFFSET:CONTROL_OFFSET] = -float('inf') # don't generate labels
-    logits[CONTROL_OFFSET:] = -float('inf')             # don't generate control tokens
+    logits[LABEL_OFFSET:SPECIAL_OFFSET] = -float('inf') # don't generate labels
+    logits[SPECIAL_OFFSET:] = -float('inf')             # don't generate special tokens
 
     # don't generate stuff in the wrong time slot
     if idx % 3 == 0:
@@ -67,7 +67,7 @@ def instr_logits(logits, full_history):
     return logits
 
         
-def add_token(model, control, tokens, top_p, current_time, debug=False):
+def add_token(model, z, tokens, top_p, current_time, debug=False):
     assert len(tokens) % 3 == 0
     
     history = tokens.copy()
@@ -79,7 +79,7 @@ def add_token(model, control, tokens, top_p, current_time, debug=False):
     new_token = []
     with torch.no_grad():
         for i in range(3):
-            input_tokens = torch.tensor(control + history + new_token).unsqueeze(0).to(model.device)
+            input_tokens = torch.tensor(z + history + new_token).unsqueeze(0).to(model.device)
             logits = model(input_tokens).logits[0,-1]
     
             idx = input_tokens.shape[1]-1
@@ -127,9 +127,9 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
         print('Labels')
         ops.print_tokens(labels)
 
-    control = [ANTICIPATE] if len(labels) > 0 or len(future) > 0 else [AUTOREGRESS]
+    z = [ANTICIPATE] if len(labels) > 0 or len(future) > 0 else [AUTOREGRESS]
     if debug:
-        print('AR Mode' if control[0] == AUTOREGRESS else 'AAR Mode')
+        print('AR Mode' if z[0] == AUTOREGRESS else 'AAR Mode')
 
     # interleave the labels with the events
     tokens, labels = ops.anticipate(prompt, ops.sort(labels + [LABEL_OFFSET+token for token in future]))
@@ -167,7 +167,7 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
                     # nothing more to anticipate
                     anticipated_time = MAX_TIME
 
-            new_token = add_token(model, control, tokens, top_p, max(start_time,current_time))
+            new_token = add_token(model, z, tokens, top_p, max(start_time,current_time))
             new_time = new_token[0] - TIME_OFFSET
             if new_time >= end_time:
                 break
@@ -215,7 +215,7 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
         print('Future')
         ops.print_tokens(labels)
 
-    control = [AUTOREGRESS]
+    z = [AUTOREGRESS]
     if debug:
         print('AR Mode')
 
@@ -234,7 +234,7 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
             anticipated_time = MAX_TIME
 
         while True:
-            new_token = add_token(model, control, tokens, top_p, max(start_time,current_time))
+            new_token = add_token(model, z, tokens, top_p, max(start_time,current_time))
             new_time = new_token[0] - TIME_OFFSET
             if new_time >= end_time:
                 break
