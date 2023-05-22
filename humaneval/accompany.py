@@ -55,22 +55,22 @@ def main(args):
 
             events = midi_to_events(os.path.join(args.dir, conditional_midi))
 
-            events, labels = extract_instruments(events, [melody])
+            events, controls = extract_instruments(events, [melody])
             prompt = ops.clip(events, 0, args.prompt_length, clip_duration=False)
 
             for j in range(args.multiplicity):
                 t0 = time.time()
 
                 if args.anticipatory:
-                    generated_tokens = generate(model, args.prompt_length, args.clip_length, prompt, labels, top_p=0.95)
-                    output = ops.clip(ops.combine(generated_tokens, labels), 0, args.clip_length)
+                    generated_tokens = generate(model, args.prompt_length, args.clip_length, prompt, controls, top_p=0.95)
+                    output = ops.clip(ops.combine(generated_tokens, controls), 0, args.clip_length)
                     mid = events_to_midi(output)
                     mid.save(f'{args.dir}/anticipatory/{idx}-clip-v{j}.mid')
                     if args.visualize:
                         visualize(output, f'{args.dir}/anticipatory/{idx}-clip-v{j}.png')
 
                 if args.baseline:
-                    generated_tokens = generate_ar(model, args.prompt_length, args.clip_length, prompt, labels, top_p=0.95)
+                    generated_tokens = generate_ar(model, args.prompt_length, args.clip_length, prompt, controls, top_p=0.95)
                     output = ops.clip(generated_tokens, 0, args.clip_length)
                     print(len(generated_tokens), len(output))
                     mid = events_to_midi(output)
@@ -86,7 +86,7 @@ def main(args):
                     retrieved = ops.translate(retrieved, -int(TIME_RESOLUTION*start_time))
                     events, _ = extract_instruments(retrieved, [melody])
                     generated = prompt + ops.clip(events, args.prompt_length, args.clip_length)
-                    output = ops.combine(generated, labels)
+                    output = ops.combine(generated, controls)
                     mid = events_to_midi(output)
                     mid.save(f'{args.dir}/retrieved/{idx}-clip-v{j}.mid')
                     if args.visualize:

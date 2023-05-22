@@ -10,7 +10,7 @@ from anticipation.convert import compound_to_events, midi_to_interarrival
 
 def extract_spans(all_events, rate):
     events = []
-    labels = []
+    controls = []
     span = True
     next_span = end_span = TIME_OFFSET+0
     for time, dur, note in zip(all_events[0::3],all_events[1::3],all_events[2::3]):
@@ -27,45 +27,45 @@ def extract_spans(all_events, rate):
             end_span = time + DELTA*TIME_RESOLUTION
 
         if span:
-            # mark this event as a label
-            labels.extend([LABEL_OFFSET+time, LABEL_OFFSET+dur, LABEL_OFFSET+note])
+            # mark this event as a control
+            controls.extend([CONTROL_OFFSET+time, CONTROL_OFFSET+dur, CONTROL_OFFSET+note])
         else:
             events.extend([time, dur, note])
 
-    return events, labels
+    return events, controls
 
 
 ANTICIPATION_RATES = 10
 def extract_random(all_events, rate):
     events = []
-    labels = []
+    controls = []
     for time, dur, note in zip(all_events[0::3],all_events[1::3],all_events[2::3]):
         assert(note not in [SEPARATOR, REST]) # shouldn't be in the sequence yet
 
         if np.random.random() < rate/float(ANTICIPATION_RATES):
-            # mark this event as a label
-            labels.extend([LABEL_OFFSET+time, LABEL_OFFSET+dur, LABEL_OFFSET+note])
+            # mark this event as a control
+            controls.extend([CONTROL_OFFSET+time, CONTROL_OFFSET+dur, CONTROL_OFFSET+note])
         else:
             events.extend([time, dur, note])
 
-    return events, labels
+    return events, controls
 
 
 def extract_instruments(all_events, instruments):
     events = []
-    labels = []
+    controls = []
     for time, dur, note in zip(all_events[0::3],all_events[1::3],all_events[2::3]):
-        assert(note < LABEL_OFFSET)           # shouldn't be in the sequence yet
+        assert(note < CONTROL_OFFSET)         # shouldn't be in the sequence yet
         assert(note not in [SEPARATOR, REST]) # these shouldn't either
 
         instr = (note-NOTE_OFFSET)//2**7
         if instr in instruments:
-            # mark this event as a label
-            labels.extend([LABEL_OFFSET+time, LABEL_OFFSET+dur, LABEL_OFFSET+note])
+            # mark this event as a control
+            controls.extend([CONTROL_OFFSET+time, CONTROL_OFFSET+dur, CONTROL_OFFSET+note])
         else:
             events.extend([time, dur, note])
 
-    return events, labels
+    return events, controls
 
 
 def maybe_tokenize(compound_tokens):
@@ -151,33 +151,33 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                 if k % 10 == 0:
                     # no augmentation
                     events = all_events.copy()
-                    labels = []
+                    controls = []
                 elif k % 10 == 1:
                     # span augmentation
                     lmbda = .05
-                    events, labels = extract_spans(all_events, lmbda)
+                    events, controls = extract_spans(all_events, lmbda)
                 elif k % 10 < 6:
                     # random augmentation
                     r = np.random.randint(1,ANTICIPATION_RATES)
-                    events, labels = extract_random(all_events, r)
+                    events, controls = extract_random(all_events, r)
                 else:
                     if len(instruments) > 1:
                         # instrument augmentation: at least one, but not all instruments
                         u = 1+np.random.randint(len(instruments)-1)
                         subset = np.random.choice(instruments, u, replace=False)
-                        events, labels = extract_instruments(all_events, subset)
+                        events, controls = extract_instruments(all_events, subset)
                     else:
                         # no augmentation
                         events = all_events.copy()
-                        labels = []
+                        controls = []
 
                 if len(concatenated_tokens) == 0:
                     z = ANTICIPATE if k % 10 != 0 else AUTOREGRESS
 
                 events = ops.pad(events, end_time)
                 rest_count += sum(1 if tok == REST else 0 for tok in events[2::3])
-                tokens, labels = ops.anticipate(events, labels)
-                assert len(labels) == 0 # should have consumed all labels (because of padding)
+                tokens, controls = ops.anticipate(events, controls)
+                assert len(controls) == 0 # should have consumed all controls (because of padding)
                 tokens[0:0] = [SEPARATOR, SEPARATOR, SEPARATOR]
                 concatenated_tokens.extend(tokens)
 
@@ -198,13 +198,13 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                         stats[3] += 1
                         continue
 
-                    # if seq contains SEPARATOR, these labels describe the first sequence
+                    # if seq contains SEPARATOR, global controls describe the first sequence
                     seq.insert(0, z)
 
                     outfile.write(' '.join([str(tok) for tok in seq]) + '\n')
                     seqcount += 1
 
-                    # grab the current augmentation labels if we didn't already
+                    # grab the current augmentation controls if we didn't already
                     z = ANTICIPATE if k % 10 != 0 else AUTOREGRESS
 
     if debug:

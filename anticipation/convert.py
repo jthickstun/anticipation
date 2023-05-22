@@ -280,7 +280,7 @@ def events_to_compound(tokens, debug=False):
     tokens = unpad(tokens)
 
     # move all tokens to zero-offset for synthesis
-    tokens = [tok - LABEL_OFFSET if tok >= LABEL_OFFSET and tok != SEPARATOR else tok
+    tokens = [tok - CONTROL_OFFSET if tok >= CONTROL_OFFSET and tok != SEPARATOR else tok
               for tok in tokens]
 
     # remove type offsets

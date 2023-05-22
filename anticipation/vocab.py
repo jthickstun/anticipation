@@ -9,9 +9,9 @@ DUR_OFFSET = TIME_OFFSET + MAX_TIME
 NOTE_OFFSET = DUR_OFFSET + MAX_DUR
 REST = NOTE_OFFSET + MAX_NOTE
 
-# the label block
-LABEL_OFFSET = NOTE_OFFSET + MAX_NOTE + 1
-ATIME_OFFSET = LABEL_OFFSET + 0
+# the control block
+CONTROL_OFFSET = NOTE_OFFSET + MAX_NOTE + 1
+ATIME_OFFSET = CONTROL_OFFSET + 0
 ADUR_OFFSET = ATIME_OFFSET + MAX_TIME
 ANOTE_OFFSET = ADUR_OFFSET + MAX_DUR
 
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     print('  -> duration offset :', DUR_OFFSET)
     print('  -> note offset :', NOTE_OFFSET)
     print('  -> rest token: ', REST)
-    print('Anticipated Label Offset: ', LABEL_OFFSET)
+    print('Anticipated Control Offset: ', CONTROL_OFFSET)
     print('  -> anticipated time offset :', ATIME_OFFSET)
     print('  -> anticipated duration offset :', ADUR_OFFSET)
     print('  -> anticipated note offset :', ANOTE_OFFSET)

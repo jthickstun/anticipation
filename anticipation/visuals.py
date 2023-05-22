@@ -31,7 +31,7 @@ def visualize(tokens, output, selected=None):
         if note == REST:
             continue
 
-        assert note < LABEL_OFFSET
+        assert note < CONTROL_OFFSET
             
         tm = tm - TIME_OFFSET
         dur = dur - DUR_OFFSET

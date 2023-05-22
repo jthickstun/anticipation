@@ -128,10 +128,10 @@ def main(args):
             if args.visualize:
                 visualize(clip, f'{args.output}/groundtruth/{i}-clip.png')
 
-            events, labels = extract_instruments(clip, [melody])
+            events, controls = extract_instruments(clip, [melody])
             prompt = ops.clip(events, 0, args.prompt_length, clip_duration=False)
 
-            conditional_events = ops.clip(ops.combine(prompt, labels), 0, args.clip_length)
+            conditional_events = ops.clip(ops.combine(prompt, controls), 0, args.clip_length)
             mid = events_to_midi(conditional_events)
             mid.save(f'{args.output}/{i}-conditional.mid')
             if args.visualize:

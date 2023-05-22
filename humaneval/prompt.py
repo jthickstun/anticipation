@@ -38,7 +38,7 @@ def main(args):
             for j in range(args.multiplicity):
                 t0 = time.time()
 
-                generated_tokens = generate(model, start_time, args.clip_length, prompt, labels=[], top_p=0.95)
+                generated_tokens = generate(model, start_time, args.clip_length, prompt, controls=[], top_p=0.95)
                 output = ops.clip(generated_tokens, 0, args.clip_length)
                 mid = events_to_midi(output)
                 mid.save(f'{args.dir}/{args.output}/{idx}-clip-v{j}.mid')

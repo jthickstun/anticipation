@@ -107,59 +107,59 @@ def main(args):
         tokens, melody, idx = select_sample(filenames, args.prompt_length, args.clip_length)
         clip = ops.clip(tokens, 0, args.clip_length)
         mid = events_to_midi(clip)
-        mid.save(f'output/clip-{i}.mid')
+        mid.save(f'{args.output}/clip-{i}.mid')
         if args.visualize:
             visualize(clip, f'output/clip-{i}.png')
 
         full_prompt = ops.clip(tokens, 0, args.prompt_length)
         mid = events_to_midi(full_prompt)
-        mid.save(f'output/prompt-{i}.mid')
+        mid.save(f'{args.output}/prompt-{i}.mid')
         if args.visualize:
-            visualize(full_prompt, f'output/prompt-{i}.png')
+            visualize(full_prompt, f'{args.output}/prompt-{i}.png')
 
-        tokens, labels = extract_instruments(tokens, [melody])
+        tokens, controls = extract_instruments(tokens, [melody])
         prompt = ops.clip(tokens, 0, args.prompt_length, clip_duration=False)
 
-        mid = events_to_midi(ops.clip(prompt + labels, 0, args.clip_length))
-        mid.save(f'output/conditional-{i}.mid')
+        mid = events_to_midi(ops.clip(prompt + controls, 0, args.clip_length))
+        mid.save(f'{args.output}/conditional-{i}.mid')
         if args.visualize:
-            visualize(ops.clip(ops.combine(prompt, labels), 0, args.clip_length), f'output/conditional-{i}.png')
+            visualize(ops.clip(ops.combine(prompt, controls), 0, args.clip_length), f'{args.output}/conditional-{i}.png')
 
         for j in range(args.multiplicity):
             t0 = time.time()
             if args.baseline:
-                generated_tokens = generate_ar(model, args.prompt_length, args.clip_length, prompt, labels, top_p=.98)
+                generated_tokens = generate_ar(model, args.prompt_length, args.clip_length, prompt, controls, top_p=.98)
                 output = ops.clip(generated_tokens, 0, args.clip_length)
                 mid = events_to_midi(output)
-                mid.save(f'output/generated-ar-labels-{i}-v{j}.mid')
+                mid.save(f'{args.output}/generated-ar-controls-{i}-v{j}.mid')
                 if args.visualize:
-                    visualize(output, f'output/generated-ar-labels-{i}-v{j}.png')
+                    visualize(output, f'{args.output}/generated-ar-controls-{i}-v{j}.png')
 
             if args.retrieve:
                 generated_tokens, _, _ = select_sample(filenames, args.prompt_length, args.clip_length, idx)
                 generated_tokens, _ = extract_instruments(generated_tokens, [melody])
                 generated_tokens = ops.clip(generated_tokens, args.prompt_length, args.clip_length, clip_duration=False)
-                output = ops.clip(ops.combine(prompt + generated_tokens, labels), 0, args.clip_length)
+                output = ops.clip(ops.combine(prompt + generated_tokens, controls), 0, args.clip_length)
                 mid = events_to_midi(output)
-                mid.save(f'output/generated-retrieval{i}-v{j}.mid')
+                mid.save(f'{args.output}/generated-retrieval{i}-v{j}.mid')
                 if args.visualize:
-                    visualize(output, f'output/generated-retrieval{i}-v{j}.png')
+                    visualize(output, f'{args.output}/generated-retrieval{i}-v{j}.png')
 
             if args.completion:
                 generated_tokens = generate(model, args.prompt_length, args.clip_length, full_prompt, [], top_p=.98, debug=False)
                 output = ops.clip(generated_tokens, 0, args.clip_length)
                 mid = events_to_midi(output)
-                mid.save(f'output/generated-ar-{i}-v{j}.mid')
+                mid.save(f'{args.output}/generated-ar-{i}-v{j}.mid')
                 if args.visualize:
-                    visualize(output, f'output/generated-ar-{i}-v{j}.png')
+                    visualize(output, f'{args.output}/generated-ar-{i}-v{j}.png')
 
             if args.anticipatory:
-                generated_tokens = generate(model, args.prompt_length, args.clip_length, prompt, labels, top_p=.98, debug=False)
-                output = ops.clip(ops.combine(generated_tokens, labels), 0, args.clip_length)
+                generated_tokens = generate(model, args.prompt_length, args.clip_length, prompt, controls, top_p=.98, debug=False)
+                output = ops.clip(ops.combine(generated_tokens, controls), 0, args.clip_length)
                 mid = events_to_midi(output)
-                mid.save(f'output/generated-aar-{i}-v{j}.mid')
+                mid.save(f'{args.output}/generated-aar-{i}-v{j}.mid')
                 if args.visualize:
-                    visualize(output, f'output/generated-aar-{i}-v{j}.png')
+                    visualize(output, f'{args.output}/generated-aar-{i}-v{j}.png')
 
             print(f'Harmonized with instrument {melody}. Sampling time: {time.time()-t0} seconds')
 
@@ -168,6 +168,8 @@ if __name__ == '__main__':
     parser = ArgumentParser(description='generate infilling completions')
     parser.add_argument('dir', help='directory containing MIDI files to sample')
     parser.add_argument('model', help='directory containing an anticipatory model checkpoint')
+    parser.add_argument('-o', '--output', type=str, default='output',
+            help='output directory')
     parser.add_argument('-c', '--count', type=int, default=10,
             help='number of clips to sample')
     parser.add_argument('-m', '--multiplicity', type=int, default=1,

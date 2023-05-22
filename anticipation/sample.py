@@ -9,8 +9,8 @@ from anticipation.vocab import *
 
 
 def safe_logits(logits, idx):
-    logits[LABEL_OFFSET:SPECIAL_OFFSET] = -float('inf') # don't generate labels
-    logits[SPECIAL_OFFSET:] = -float('inf')             # don't generate special tokens
+    logits[CONTROL_OFFSET:SPECIAL_OFFSET] = -float('inf') # don't generate controls
+    logits[SPECIAL_OFFSET:] = -float('inf')               # don't generate special tokens
 
     # don't generate stuff in the wrong time slot
     if idx % 3 == 0:
@@ -101,12 +101,12 @@ def add_token(model, z, tokens, top_p, current_time, debug=False):
     return new_token
 
 
-def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
+def generate(model, start_time, end_time, inputs=None, controls=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
     if inputs is None:
         inputs = []
 
-    if labels is None:
-        labels = []
+    if controls is None:
+        controls = []
 
     start_time = int(TIME_RESOLUTION*start_time)
     end_time = int(TIME_RESOLUTION*end_time)
@@ -114,25 +114,25 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
     # prompt is events up to start_time
     prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False), start_time)
 
-    # treat events beyond start_time as labels
+    # treat events beyond start_time as controls
     future = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False)
     if debug:
         print('Future')
         ops.print_tokens(future)
 
-    # clip labels that preceed the sequence
-    labels = ops.clip(labels, DELTA, ops.max_time(labels, seconds=False), clip_duration=False)
+    # clip controls that preceed the sequence
+    controls = ops.clip(controls, DELTA, ops.max_time(controls, seconds=False), clip_duration=False)
 
     if debug:
-        print('Labels')
-        ops.print_tokens(labels)
+        print('Controls')
+        ops.print_tokens(controls)
 
-    z = [ANTICIPATE] if len(labels) > 0 or len(future) > 0 else [AUTOREGRESS]
+    z = [ANTICIPATE] if len(controls) > 0 or len(future) > 0 else [AUTOREGRESS]
     if debug:
         print('AR Mode' if z[0] == AUTOREGRESS else 'AAR Mode')
 
-    # interleave the labels with the events
-    tokens, labels = ops.anticipate(prompt, ops.sort(labels + [LABEL_OFFSET+token for token in future]))
+    # interleave the controls with the events
+    tokens, controls = ops.anticipate(prompt, ops.sort(controls + [CONTROL_OFFSET+token for token in future]))
 
     if debug:
         print('Prompt')
@@ -143,9 +143,9 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
         print('Current time:', current_time)
 
     with tqdm(range(end_time-start_time)) as progress:
-        if labels:
-            atime, adur, anote = labels[0:3]
-            anticipated_tokens = labels[3:]
+        if controls:
+            atime, adur, anote = controls[0:3]
+            anticipated_tokens = controls[3:]
             anticipated_time = atime - ATIME_OFFSET
         else:
             # nothing to anticipate
@@ -188,20 +188,20 @@ def generate(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, d
     return ops.sort(ops.unpad(events) + future)
 
 
-def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
+def generate_ar(model, start_time, end_time, inputs=None, controls=None, top_p=1.0, debug=False, delta=DELTA*TIME_RESOLUTION):
     if inputs is None:
         inputs = []
 
-    if labels is None:
-        labels = []
+    if controls is None:
+        controls = []
     else:
-        # treat labels as ordinary tokens
-        labels = [token-LABEL_OFFSET for token in labels]
+        # treat controls as ordinary tokens
+        controls = [token-CONTROL_OFFSET for token in controls]
 
     start_time = int(TIME_RESOLUTION*start_time)
     end_time = int(TIME_RESOLUTION*end_time)
 
-    inputs = ops.sort(inputs + labels)
+    inputs = ops.sort(inputs + controls)
 
     # prompt is events up to start_time
     prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False, seconds=False), start_time)
@@ -209,11 +209,11 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
         print('Prompt')
         ops.print_tokens(prompt)
 
-    # treat events beyond start_time as labels
-    labels = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False, seconds=False)
+    # treat events beyond start_time as controls
+    controls = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False, seconds=False)
     if debug:
         print('Future')
-        ops.print_tokens(labels)
+        ops.print_tokens(controls)
 
     z = [AUTOREGRESS]
     if debug:
@@ -225,9 +225,9 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
 
     tokens = prompt
     with tqdm(range(end_time-start_time)) as progress:
-        if labels:
-            atime, adur, anote = labels[0:3]
-            anticipated_tokens = labels[3:]
+        if controls:
+            atime, adur, anote = controls[0:3]
+            anticipated_tokens = controls[3:]
             anticipated_time = atime - TIME_OFFSET
         else:
             # nothing to anticipate
@@ -271,4 +271,4 @@ def generate_ar(model, start_time, end_time, inputs=None, labels=None, top_p=1.0
     if anticipated_time != MAX_TIME:
         tokens.extend([atime, adur, anote])
 
-    return ops.sort(ops.unpad(tokens) + labels)
+    return ops.sort(ops.unpad(tokens) + controls)

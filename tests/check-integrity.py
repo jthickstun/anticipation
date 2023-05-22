@@ -30,12 +30,12 @@ if __name__ == '__main__':
                     anticipation_time = ATIME_OFFSET+0
                     continue
 
-                if time < LABEL_OFFSET: # event token
+                if time < CONTROL_OFFSET: # event token
                     assert(previous_time <= time) # events should come in order
                     previous_time = time
                     if check: # if the last token was anticipated
                         # check sequence ordering
-                        assert(anticipation_time - LABEL_OFFSET <= time + DELTA*TIME_RESOLUTION)
+                        assert(anticipation_time - CONTROL_OFFSET <= time + DELTA*TIME_RESOLUTION)
                         check = False
                 else: # anticipated token
                     assert(anticipation_time <= time)

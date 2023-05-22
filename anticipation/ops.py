@@ -13,12 +13,12 @@ def print_tokens(tokens):
             continue
 
         if note == REST:
-            assert tm < LABEL_OFFSET
+            assert tm < CONTROL_OFFSET
             assert dur == DUR_OFFSET+0
             print(j, tm, 'REST')
             continue
 
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             tm = tm - TIME_OFFSET
             dur = dur - DUR_OFFSET
             note = note - NOTE_OFFSET
@@ -41,7 +41,7 @@ def clip(tokens, start, end, clip_duration=True, seconds=True):
 
     new_tokens = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             this_time = time - TIME_OFFSET
             this_dur = dur - DUR_OFFSET
         else:
@@ -63,7 +63,7 @@ def clip(tokens, start, end, clip_duration=True, seconds=True):
 def mask(tokens, start, end):
     new_tokens = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             this_time = (time - TIME_OFFSET)/float(TIME_RESOLUTION)
         else:
             this_time = (time - ATIME_OFFSET)/float(TIME_RESOLUTION)
@@ -77,7 +77,7 @@ def mask(tokens, start, end):
 
 
 def sort(tokens):
-    """ sort sequence of events or labels (but not both) """
+    """ sort sequence of events or controls (but not both) """
 
     times = tokens[0::3]
     indices = sorted(range(len(times)), key=times.__getitem__)
@@ -90,17 +90,17 @@ def sort(tokens):
 
 
 def split(tokens):
-    """ split a sequence into events and labels """
+    """ split a sequence into events and controls """
 
     events = []
-    labels = []
+    controls = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             events.extend([time, dur, note])
         else:
-            labels.extend([time, dur, note])
+            controls.extend([time, dur, note])
 
-    return events, labels
+    return events, controls
 
 
 def pad(tokens, end_time=None, density=TIME_RESOLUTION):
@@ -109,7 +109,7 @@ def pad(tokens, end_time=None, density=TIME_RESOLUTION):
     previous_time = TIME_OFFSET+0
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         # must pad before separation, anticipation
-        assert note < LABEL_OFFSET
+        assert note < CONTROL_OFFSET
 
         # insert pad tokens to ensure the desired density
         while time > previous_time + density:
@@ -136,37 +136,37 @@ def unpad(tokens):
     return new_tokens
 
 
-def anticipate(events, labels, delta=DELTA*TIME_RESOLUTION):
+def anticipate(events, controls, delta=DELTA*TIME_RESOLUTION):
     """
-    Interleave a sequence of events with anticipated labels.
+    Interleave a sequence of events with anticipated controls.
 
     Inputs:
-      events : a sequence of events
-      labels : a sequence of time-localized labels
-      delta  : the anticipation interval
+      events   : a sequence of events
+      controls : a sequence of time-localized controls
+      delta    : the anticipation interval
     
     Returns:
-      tokens : interleaved events and anticipated labels
-      labels : unconsumed labels (label time > max_time(events) + delta)
+      tokens   : interleaved events and anticipated controls
+      controls : unconsumed controls (control time > max_time(events) + delta)
     """
 
-    if len(labels) == 0:
-        return events, labels
+    if len(controls) == 0:
+        return events, controls
 
     tokens = []
     event_time = 0
-    label_time = labels[0] - ATIME_OFFSET
+    control_time = controls[0] - ATIME_OFFSET
     for time, dur, note in zip(events[0::3],events[1::3],events[2::3]):
-        while event_time >= label_time - delta:
-            tokens.extend(labels[0:3])
-            labels = labels[3:] # consume this label
-            label_time = labels[0] - ATIME_OFFSET if len(labels) > 0 else float('inf')
+        while event_time >= control_time - delta:
+            tokens.extend(controls[0:3])
+            controls = controls[3:] # consume this control
+            control_time = controls[0] - ATIME_OFFSET if len(controls) > 0 else float('inf')
 
-        assert note < LABEL_OFFSET
+        assert note < CONTROL_OFFSET
         event_time = time - TIME_OFFSET
         tokens.extend([time, dur, note])
 
-    return tokens, labels
+    return tokens, controls
 
 
 def sparsity(tokens):
@@ -174,7 +174,7 @@ def sparsity(tokens):
     previous_time = TIME_OFFSET+0
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         if note == SEPARATOR: continue
-        assert note < LABEL_OFFSET # don't operate on interleaved sequences
+        assert note < CONTROL_OFFSET # don't operate on interleaved sequences
 
         max_dt = max(max_dt, time - previous_time)
         previous_time = time
@@ -188,7 +188,7 @@ def min_time(tokens, seconds=True, instr=None):
         # stop calculating at sequence separator
         if note == SEPARATOR: break
 
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             time -= TIME_OFFSET
             note -= NOTE_OFFSET
         else:
@@ -211,7 +211,7 @@ def max_time(tokens, seconds=True, instr=None):
         # stop calculating at sequence separator
         if note == SEPARATOR: break
 
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             time -= TIME_OFFSET
             note -= NOTE_OFFSET
         else:
@@ -232,7 +232,7 @@ def get_instruments(tokens):
     for time, dur, note in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         if note >= SPECIAL_OFFSET: continue
 
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             note -= NOTE_OFFSET
         else:
             note -= ANOTE_OFFSET
@@ -255,7 +255,7 @@ def translate(tokens, dt, seconds=False):
             dt = 0
             continue
 
-        if note < LABEL_OFFSET:
+        if note < CONTROL_OFFSET:
             this_time = time - TIME_OFFSET
         else:
             this_time = time - ATIME_OFFSET
@@ -268,5 +268,5 @@ def translate(tokens, dt, seconds=False):
 
     return new_tokens
 
-def combine(events, labels):
-  return sort(events + [token - LABEL_OFFSET for token in labels])
+def combine(events, controls):
+  return sort(events + [token - CONTROL_OFFSET for token in controls])
