@@ -1,3 +1,7 @@
+"""
+Utilities for converting to and from Midi data and encoded/tokenized data.
+"""
+
 from collections import defaultdict
 
 import mido

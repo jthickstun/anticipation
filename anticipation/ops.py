@@ -1,3 +1,7 @@
+"""
+Utilities for operating on encoded Midi sequences.
+"""
+
 from collections import defaultdict
 
 from anticipation.config import *

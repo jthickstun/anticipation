@@ -1,3 +1,7 @@
+"""
+API functions for sampling from anticipatory infilling models.
+"""
+
 import torch
 import torch.nn.functional as F
 

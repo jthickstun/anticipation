@@ -1,3 +1,7 @@
+"""
+Top-level functions for preprocessing data to be used for training.
+"""
+
 from tqdm import tqdm
 
 import numpy as np
@@ -212,5 +216,3 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
         print(fmt.format(seqcount, stats[0]+stats[1]+stats[2], stats[3], rest_count))
 
     return (seqcount, rest_count, stats[0], stats[1], stats[2], stats[3])
-
-

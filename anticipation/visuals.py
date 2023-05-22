@@ -1,3 +1,7 @@
+"""
+Utilities for inspecting encoded music data.
+"""
+
 import numpy as np
 
 import matplotlib

@@ -1,3 +1,7 @@
+"""
+The vocabularies used for arrival-time and interarrival-time encodings.
+"""
+
 # training sequence vocab
 
 from anticipation.config import *

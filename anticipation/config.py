@@ -1,3 +1,7 @@
+"""
+Global configuration for anticipatory infilling models.
+"""
+
 # model hyper-parameters
 
 CONTEXT_SIZE = 1024                # model context
