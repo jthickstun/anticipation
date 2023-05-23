@@ -8,7 +8,7 @@ by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlw
 
 TODO: description
 
-Begin by installing the anticipation package.
+Begin by installing the anticipation package (from the root anticipation package directory).
 
 ```
 pip install .
@@ -16,7 +16,11 @@ pip install .
 
 ## Software Dependencies
 
-TODO: requirements.txt
+Run the following command to install dependencies.
+
+```
+pip install -r requirements.txt
+```
 
 ## Preprocessing the LakhMidi dataset
 
