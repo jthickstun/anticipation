@@ -9,7 +9,7 @@ python humaneval/melody-select.py $DATAPATH/lmd_full/f/ -o qualify -c 5 -s 1 -v
 
 Then we generate accompaniments to these clips. We specify the reference midis (`-d` option) for the retrieval baseline.
 ```
-python humaneval/harmonize.py qualify -r -d $DATAPATH/lmd_full/f/
+python humaneval/accompany.py qualify -r -d $DATAPATH/lmd_full/f/
 ```
 
 ## Generating clips for the prompted completion round
