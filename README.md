@@ -1,14 +1,14 @@
-# Anticipatory Music Infilling Models
+# Anticipatory Music Transformer
 
-Implementation of the anticipatory infilling models described in Anticipatory Autoregressive Models for Controllable Music Generation.
+Implementation of the models described in Anticipatory Music Transformer.
 
 by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlwh.org/), [__Chris Donahue__](https://chrisdonahue.com/), and [__Percy Liang__](https://cs.stanford.edu/~pliang/).
 
 -------------------------------------------------------------------------------------
 
-TODO: description
+This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ provide code for training these models: you may use the datasets constructed here as input to your favorite codebase for training autoregressive transformer models.
 
-Begin by installing the anticipation package.
+Begin by installing the anticipation package (from the root anticipation package directory).
 
 ```
 pip install .
@@ -16,7 +16,11 @@ pip install .
 
 ## Software Dependencies
 
-TODO: requirements.txt
+Run the following command to install dependencies.
+
+```
+pip install -r requirements.txt
+```
 
 ## Preprocessing the LakhMidi dataset
 

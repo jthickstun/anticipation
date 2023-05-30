@@ -80,6 +80,17 @@ def mask(tokens, start, end):
     return new_tokens
 
 
+def delete(tokens, criterion):
+    new_tokens = []
+    for token in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
+        if criterion(token):
+            continue
+
+        new_tokens.extend(token)
+
+    return new_tokens
+
+
 def sort(tokens):
     """ sort sequence of events or controls (but not both) """
 
@@ -265,9 +276,6 @@ def translate(tokens, dt, seconds=False):
             this_time = time - ATIME_OFFSET
 
         assert 0 <= this_time + dt
-        if not this_time + dt < MAX_TIME:
-            raise OverflowError
-
         new_tokens.extend([time+dt, dur, note])
 
     return new_tokens
