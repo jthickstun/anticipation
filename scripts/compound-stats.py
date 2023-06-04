@@ -12,24 +12,29 @@ from anticipation.config import *
 from anticipation.convert import compound_to_events
 from anticipation.tokenize import maybe_tokenize
 
+plt.rcParams['font.family'] = 'serif'
+plt.rcParams['font.serif'] = ['Computer Modern']
+plt.rcParams['font.size'] = 16
 
 def dataset_stats(filename):
     with open(filename, 'r') as f:
         compound_tokens = [int(token) for token in f.read().split()]
 
-    _, status = maybe_tokenize(compound_tokens)
+    _, _, status = maybe_tokenize(compound_tokens)
     time_length = 0 if len(compound_tokens) == 0 else compound_tokens[-5] + compound_tokens[-4]
-    return (len(compound_tokens) // 5, time_length, status)
+    return (3*(len(compound_tokens) // 5), time_length, status)
 
 
 def loghist(filename, data, title, xlabel):
     sns.set_style('whitegrid')
     plt.clf()
     plt.figure(figsize=(10,4))
-    plt.title(title)
+    #plt.title(title)
     plt.xscale('log')
     plt.xlabel(xlabel)
     plt.ylabel('Density')
+
+    plt.grid(True, which='both', linestyle='-', linewidth=0.5)
 
     density = sns.kdeplot(data, bw_adjust=1.0)
 
