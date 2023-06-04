@@ -18,7 +18,7 @@ We generate prompted completions using an autoregressive model (or an anticipato
 
 First, we randomly select 50 prompts and completions from a collection of completions generated using the FIGARO Music Transformer (stored at $FIGARO). Store these prompts at $PROMPTPATH:
 ```
-python humaneval/prompt-select.py $FIGARO -o $PROMPTPATH -c 50 -s 999 -v
+python humaneval/figaro-select.py $FIGARO -o $PROMPTPATH -c 50 -s 999 -v
 ```
 
 Generate completions using a model stored at $MODELPATH and store the results to $PROMPTPATH/$OUTPUT:
