@@ -8,6 +8,8 @@ by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlw
 
 This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ provide code for training these models: you may use the datasets constructed here as input to your favorite codebase for training autoregressive transformer models.
 
+This project is licensed under the terms of the Apache License, Version 2.0.
+
 Begin by installing the anticipation package (from the root anticipation package directory).
 
 ```
@@ -36,10 +38,10 @@ Preprocess the binary MIDI files to an intermediate text representation.
 ```
 python scripts/midi-preprocess.py $DATAPATH/lmd_full
 ```
-Tokenize batches of intermediate LakhMIDI data files according to the vocabulary defined in `src/settings/vocab.py`. The top-level script depends upon the directory structure of the LakhMIDI dataset. Parallelism is again controlled by `PREPROC_WORKERS`.
+Tokenize batches of intermediate LakhMIDI data files according to the vocabulary defined in `src/settings/vocab.py`. The top-level script depends upon the directory structure of the LakhMIDI dataset. Parallelism is again controlled by `PREPROC_WORKERS`. Choose a dataset augmentation factor (multiple of 10) for training an anticipatory infilling model, or 1 (default) for standard autoregressive training. Use the optional `-i` flag to generate training data for an interarrival-time model.
 
 ```
-python scripts/tokenize-lakh.py $DATAPATH/lmd_full
+python scripts/tokenize-lakh.py $DATAPATH/lmd_full --augment 1
 ```
 
 Define the train/validation/test splits. LakhMidi files are named according to their (hexadecimal) MD5 checksum: our convention is to use files starting with `f` as the test set, files starting with `e` as validation, and the rest of the dataset for training.
@@ -62,7 +64,7 @@ The final preprocessed train/valid/test splits are available at `DATAPATH`.
 
 **Memory**. The most memory intensive operation is the final shuffle operation, which requires the entire final training dataset to be loaded into memory. Alternative memory-efficient solutions do exist for shuffling (or approximately shuffling) the lines of a file, which you may wish to explore if memory is a constraint. Warning: we have observed that approximate shuffling using a *local* shuffle of the training data is not sufficient to achieve good model performance and should be avoided.
 
-**Disk**. The base preprocessed LakhMidi dataset--prepared for autoregressive modeling without anticipation--is about 10Gb. The size of the dataset when prepared for anticipatory autoregressive modeling is a multiple of the base dataset size, controlled by AUGMENT\_FACTOR in `src/settings/constants.py`. See the [Cleanup](###cleanup) for cleaning up temporary files on disk after preprocessing.
+**Disk**. The base preprocessed LakhMidi dataset--prepared for autoregressive modeling without anticipation--is about 10Gb. The size of the dataset when prepared for anticipatory autoregressive modeling is a multiple of the base dataset size, controlled by `augment` parameter to `scripts/tokenize-lakh.py`. See the [Cleanup](###cleanup) for cleaning up temporary files on disk after preprocessing.
 
 ### Cleanup
 
