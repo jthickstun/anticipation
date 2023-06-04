@@ -18,7 +18,7 @@ def main(args):
 
     print('Tokenization parameters:')
     print(f'  anticipation interval = {DELTA}s')
-    print(f'  augment = {AUGMENT_FACTOR}x')
+    print(f'  augment = {args.augment}x')
     print(f'  max track length = {MAX_TRACK_TIME_IN_SECONDS}s')
     print(f'  min track length = {MIN_TRACK_TIME_IN_SECONDS}s')
     print(f'  min track events = {MIN_TRACK_EVENTS}')
@@ -28,7 +28,7 @@ def main(args):
     outputs = [os.path.join(args.datadir, f'tokenized-events-{s}.txt') for s in LAKH_SPLITS]
 
     # don't augment the valid/test splits
-    augment = [1 if s in LAKH_VALID or s in LAKH_TEST else AUGMENT_FACTOR for s in LAKH_SPLITS]
+    augment = [1 if s in LAKH_VALID or s in LAKH_TEST else args.augment for s in LAKH_SPLITS]
 
     # parallel tokenization drops the last chunk of < M tokens
     # if concerned about waste: process larger groups of datafiles
@@ -36,8 +36,12 @@ def main(args):
     with Pool(processes=PREPROC_WORKERS, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
         results = pool.starmap(func, zip(files, outputs, augment, range(len(LAKH_SPLITS))))
 
-    seq_count, rest_count, too_short, too_long, too_manyinstr, discarded_seqs = (sum(x) for x in zip(*results))
+    seq_count, rest_count, too_short, too_long, too_manyinstr, discarded_seqs, truncations \
+            = (sum(x) for x in zip(*results))
     rest_ratio = round(100*float(rest_count)/(seq_count*M),2)
+
+    trunc_type = 'interarrival' if args.interarrival else 'duration'
+    trunc_ratio = round(100*float(truncations)/(seq_count*M),2)
 
     print('Tokenization complete.')
     print(f'  => Processed {seq_count} training sequences')
@@ -47,12 +51,15 @@ def main(args):
     print(f'      - {too_long} too long')
     print(f'      - {too_manyinstr} too many instruments')
     print(f'  => Discarded {discarded_seqs} training sequences')
+    print(f'  => Truncated {truncations} {trunc_type} times ({trunc_ratio}% of {trunc_type}s)')
 
     print('Remember to shuffle the training split!')
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='tokenizes a MIDI dataset')
     parser.add_argument('datadir', help='directory containing preprocessed MIDI to tokenize')
+    parser.add_argument('-k', '--augment', type=int, default=1,
+            help='dataset augmentation factor (multiple of 10)')
     parser.add_argument('-i', '--interarrival',
             action='store_true',
             help='request interarrival-time enocoding (default to arrival-time encoding)')

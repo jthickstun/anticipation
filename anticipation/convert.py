@@ -11,7 +11,7 @@ from anticipation.vocab import *
 from anticipation.ops import unpad
 
 
-def midi_to_interarrival(midifile, debug=False):
+def midi_to_interarrival(midifile, debug=False, stats=False):
     midi = mido.MidiFile(midifile)
 
     tokens = []
@@ -19,6 +19,7 @@ def midi_to_interarrival(midifile, debug=False):
 
     instruments = defaultdict(int) # default to code 0 = piano
     tempo = 500000 # default tempo: 500000 microseconds per beat
+    truncations = 0
     for message in midi:
         dt += message.time
 
@@ -30,6 +31,9 @@ def midi_to_interarrival(midifile, debug=False):
             instruments[message.channel] = message.program
         elif message.type in ['note_on', 'note_off']:
             delta_ticks = min(round(TIME_RESOLUTION*dt), MAX_INTERARRIVAL-1)
+            if delta_ticks != round(TIME_RESOLUTION*dt):
+                truncations += 1
+
             if delta_ticks > 0: # if time elapsed since last token
                 tokens.append(MIDI_TIME_OFFSET + delta_ticks) # add a time step event
 
@@ -57,6 +61,9 @@ def midi_to_interarrival(midifile, debug=False):
         else:
             if debug:
                 print('UNHANDLED MESSAGE', message.type, message)
+
+    if stats:
+        return tokens, truncations
 
     return tokens
 
@@ -252,7 +259,7 @@ def compound_to_midi(tokens, debug=False):
     return mid
 
 
-def compound_to_events(tokens):
+def compound_to_events(tokens, stats=False):
     assert len(tokens) % 5 == 0
     tokens = tokens.copy()
 
@@ -268,6 +275,7 @@ def compound_to_events(tokens):
     del tokens[3::4]
 
     # max duration cutoff and set unknown durations to 250ms
+    truncations = sum([1 for tok in tokens[1::3] if tok >= MAX_DUR])
     tokens[1::3] = [TIME_RESOLUTION//4 if tok == -1 else min(tok, MAX_DUR-1)
                     for tok in tokens[1::3]]
     tokens[1::3] = [DUR_OFFSET + tok for tok in tokens[1::3]]
@@ -276,6 +284,9 @@ def compound_to_events(tokens):
     tokens[0::3] = [TIME_OFFSET + tok for tok in tokens[0::3]]
 
     assert len(tokens) % 3 == 0
+
+    if stats:
+        return tokens, truncations
 
     return tokens
 
