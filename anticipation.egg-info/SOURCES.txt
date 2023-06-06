@@ -1,0 +1,14 @@
+LICENSE.md
+README.md
+setup.py
+anticipation/__init__.py
+anticipation/config.py
+anticipation/convert.py
+anticipation/ops.py
+anticipation/sample.py
+anticipation/tokenize.py
+anticipation/vocab.py
+anticipation.egg-info/PKG-INFO
+anticipation.egg-info/SOURCES.txt
+anticipation.egg-info/dependency_links.txt
+anticipation.egg-info/top_level.txt

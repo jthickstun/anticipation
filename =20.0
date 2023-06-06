@@ -1,0 +1,5 @@
+Collecting packaging
+  Downloading packaging-23.1-py3-none-any.whl (48 kB)
+     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 48.9/48.9 kB 2.0 MB/s eta 0:00:00
+Installing collected packages: packaging
+Successfully installed packaging-23.1

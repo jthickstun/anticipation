@@ -67,8 +67,6 @@ def add_token(model, control, tokens, top_p, current_time, debug=False):
     with torch.no_grad():
         for _ in range(3):
             input_tokens = torch.tensor(control + history + new_token).unsqueeze(0).cuda()
-            # print("input tokens", input_tokens.shape)
-            #  attn_mask = torch.ones(input_tokens.shape)
             logits = model(input_tokens).logits[0,-1]
     
             idx = input_tokens.shape[1]-1

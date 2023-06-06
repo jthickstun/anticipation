@@ -6,7 +6,10 @@ from math import exp
 import torch
 import torch.nn.functional as F
 
-from transformers import GPT2LMHeadModel, AutoModelForCausalLM
+import sys
+sys.path.append('/afs/cs.stanford.edu/u/kathli/repos/transformers-levanter/src')
+
+from transformers.models.gpt2 import GPT2LMHeadModel
 
 from argparse import ArgumentParser
 from tqdm import tqdm
@@ -22,17 +25,19 @@ DATA = "/nlp/scr/jthickstun/anticipation/datasets/arrival/test.txt"
 #DATA = "/nlp/scr/jthickstun/anticipation/datasets/arrival/maestro-test.txt"
 #CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/jumping-jazz-234/step-100000/hf"
 #CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/genial-firefly-238/step-100000/hf"
-#CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/efficient-sun-259/step-100000/hf"
+CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/efficient-sun-259/step-100000/hf"
 #CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/still-night-260/step-100000/hf"
 #CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/amber-yogurt-821/step-100000/hf"
-CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/fast-breeze-263/step-100000/hf"
+#CHECKPOINT= "/nlp/scr/kathli/checkpoints/elegant-republic-131/step-10000/hf"
+#CHECKPOINT = "/nlp/scr/jthickstun/anticipation/checkpoints/efficient-sun-259/step-100000/hf"
+##CHECKPOINT= "/nlp/scr/kathli/checkpoints/devout-shadow-123/step-20000/hf"
 #CHECKPOINT= "/nlp/scr/jthickstun/anticipation/checkpoints/dashing-salad-267/step-100000/hf"
 #CHECKPOINT = "/nlp/scr/jthickstun/anticipation/checkpoints/dainty-elevator-270/step-200000/hf"
 
-SUBSAMPLE=10
+SUBSAMPLE=100
 
 t0 = time.time()
-model = AutoModelForCausalLM.from_pretrained(CHECKPOINT).cuda()
+model = GPT2LMHeadModel.from_pretrained(CHECKPOINT).cuda()
 print(f'Loaded model ({time.time()-t0} seconds)')
 
 if __name__ == '__main__':

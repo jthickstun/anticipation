@@ -1,0 +1,7 @@
+Metadata-Version: 2.1
+Name: anticipation
+Version: 1.0
+Summary: Anticipatory Autoregressive Models
+Author: John Thickstun
+Author-email: jthickstun@cs.stanford.edu
+License-File: LICENSE.md

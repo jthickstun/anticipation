@@ -1,0 +1,6 @@
+matplotlib == 3.7.1
+midi2audio == 0.1.1
+mido == 1.2.10
+numpy == 1.22.4
+torch == 2.0.0+cu117
+tqdm == 4.65.0
