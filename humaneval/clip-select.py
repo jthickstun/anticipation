@@ -78,7 +78,7 @@ def main(args):
 
     with open(f'{args.output}/index.csv', 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['idx', 'original', 'conditional', 'parts'])
+        writer.writerow(['idx', 'original', 'prompt', 'parts'])
 
         for i in tqdm(range(args.count)):
             filename, clip, prompt = select_sample(filenames, args.prompt_length, args.clip_length)

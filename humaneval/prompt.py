@@ -32,13 +32,18 @@ def main(args):
         for row in reader:
             prompt_midi = row[header.index('prompt')]
             idx = int(row[header.index('idx')])
+            if idx < args.offset:
+                continue
+
+            if idx >= args.offset+args.count:
+                break
 
             prompt = midi_to_events(os.path.join(args.dir, prompt_midi))
             start_time = ops.max_time(prompt)
             for j in range(args.multiplicity):
                 t0 = time.time()
 
-                generated_tokens = generate(model, start_time, args.clip_length, prompt, controls=[], top_p=0.95)
+                generated_tokens = generate(model, start_time, args.clip_length, prompt, controls=[], top_p=0.98)
                 output = ops.clip(generated_tokens, 0, args.clip_length)
                 mid = events_to_midi(output)
                 mid.save(f'{args.dir}/{args.output}/{idx}-clip-v{j}.mid')
@@ -46,7 +51,7 @@ def main(args):
                     visualize(output, f'{args.dir}/{args.output}/{idx}-clip-v{j}.png')
 
 
-                print(f'Generated completion. Sampling time: {time.time()-t0} seconds')
+                print(f'Generated completion of idx {idx}. Sampling time: {time.time()-t0} seconds')
 
 
 if __name__ == '__main__':
@@ -57,6 +62,8 @@ if __name__ == '__main__':
             help='model description (the name of the output subdirectory)')
     parser.add_argument('-c', '--count', type=int, default=10,
             help='number of clips to sample')
+    parser.add_argument('-f', '--offset', type=int, default=0,
+            help='offset for sampling (manual hack for parallel workers)')
     parser.add_argument('-m', '--multiplicity', type=int, default=1,
             help='number of generations per clip')
     parser.add_argument('-l', '--clip_length', type=int, default=20,
