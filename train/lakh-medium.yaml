@@ -28,7 +28,6 @@ trainer:
     base_path: gs://levanter-data/lakh-checkpoints/
     save_interval: 30m
 
-
   axis_resources:
     batch: "data"
     vocab: "model"
