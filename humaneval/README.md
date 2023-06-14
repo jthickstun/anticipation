@@ -1,4 +1,4 @@
-# Human Evaluation for Music Anticipatory Infilling Models
+# Human Evaluation for the Anticipatory Music Transformer
 
 ## Generating clips for the qualification round
 
