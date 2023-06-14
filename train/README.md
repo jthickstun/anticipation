@@ -12,12 +12,12 @@ tar -xvvf lmd_full.tar.gz -C $DATAPATH
 
 Preprocess the binary MIDI files to an intermediate text representation. 
 ```
-python train/midi-preprocess.py $DATAPATH/lmd_full
+python midi-preprocess.py $DATAPATH/lmd_full
 ```
 Tokenize batches of intermediate LakhMIDI data files according to the vocabulary defined in `src/settings/vocab.py`. The top-level script depends upon the directory structure of the LakhMIDI dataset. Parallelism is again controlled by `PREPROC_WORKERS`. Choose a dataset augmentation factor (multiple of 10) for training an anticipatory infilling model, or 1 (default) for standard autoregressive training. Use the optional `-i` flag to generate training data for an interarrival-time model.
 
 ```
-python train/tokenize-lakh.py $DATAPATH/lmd_full --augment 1
+python tokenize-lakh.py $DATAPATH/lmd_full --augment 1
 ```
 
 Define the train/validation/test splits. LakhMidi files are named according to their (hexadecimal) MD5 checksum: our convention is to use files starting with `f` as the test set, files starting with `e` as validation, and the rest of the dataset for training.
