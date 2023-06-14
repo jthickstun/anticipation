@@ -1,12 +1,12 @@
 # Anticipatory Music Transformer
 
-Implementation of the methods described in Anticipatory Music Transformer.
+Implementation of the methods described in [Anticipatory Music Transformer](https://johnthickstun.com/assets/pdf/anticipatory-music-transformer.pdf).
 
 by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlwh.org/), [__Chris Donahue__](https://chrisdonahue.com/), and [__Percy Liang__](https://cs.stanford.edu/~pliang/).
 
 -------------------------------------------------------------------------------------
 
-This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ contain code for training these models: you may use the preprocessed datasets constructed here as input to your favorite codebase for training autoregressive transformer models. We used the [Levanter](https://github.com/stanford-crfm/levanter) to train models, and include instructions [here](train) for training an Anticipatory Music Transformer with Levanter.
+This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ contain code for training these models: you may use the preprocessed datasets constructed here as input to your favorite codebase for training autoregressive transformer models. We used the [Levanter](https://github.com/stanford-crfm/levanter) to train models, and include instructions [here](train) for training an Anticipatory Music Transformer with Levanter. For additional detail about this work, see the corresponding [paper](https://johnthickstun.com/assets/pdf/anticipatory-music-transformer.pdf).
 
 Pretrained models are hosted by the Center for Research on Foundation Models (CRFM) on the [HuggingFace Hub](https://huggingface.co/stanford-crfm). 
 
