@@ -6,13 +6,13 @@ by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlw
 
 -------------------------------------------------------------------------------------
 
-This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ contain code for training these models: you may use the preprocessed datasets constructed here as input to your favorite codebase for training autoregressive transformer models. We used the [Levanter](https://github.com/stanford-crfm/levanter) to train models, and include instructions [here](train) for training an Anticipatory Music Transformer with Levanter. For additional detail about this work, see the corresponding [paper](https://johnthickstun.com/assets/pdf/anticipatory-music-transformer.pdf).
+This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ contain code for training these models: you may use the preprocessed datasets constructed here as input to your favorite codebase for training autoregressive transformer models. We used the [Levanter](https://github.com/stanford-crfm/levanter) to train models, and include instructions [here](train) for training an Anticipatory Music Transformer with Levanter. For additional detail about this work, see the [paper](https://johnthickstun.com/assets/pdf/anticipatory-music-transformer.pdf).
 
 Pretrained models are hosted by the Center for Research on Foundation Models (CRFM) on the [HuggingFace Hub](https://huggingface.co/stanford-crfm). 
 
 This project is licensed under the terms of the Apache License, Version 2.0.
 
-Begin by installing the anticipation package (from the root anticipation package directory).
+Begin by installing the anticipation package (from the root of this repository).
 
 ```
 pip install .
@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 See the [Colab](https://colab.research.google.com/drive/1HCQDtGFwROpHRqcmZbV0byqbxDb74YGu?usp=sharing) notebook for an interactive demonstration of music generation using the Anticipatory Music Transformer.
 
-You can load a pretrained model using the HuggingFace Transformers package, e.g.:
+Load a pretrained model using the HuggingFace Transformers package, e.g.:
 
 ```
 from transformers import AutoModelForCausalLM
@@ -38,7 +38,7 @@ from transformers import AutoModelForCausalLM
 model = AutoModelForCausalLM.from_pretrained('stanford-crfm/music-medium-800k').cuda()
 ```
 
-You can sample from this model using the custom `generate` function implementated by the anticipation package. You can convert generated event tokens to midi using the `events_to_midi` function:
+Sample from this model using the custom `generate` function implementated by the anticipation package. You can convert generated event tokens to midi using the `events_to_midi` function:
 
 ```
 from anticipation.sample import generate
@@ -50,7 +50,7 @@ mid = events_to_midi(events)
 mid.save('generated.mid')
 ```
 
-You can load your own MIDI and tokenize it using the `midi_to_events` function.
+Load your own MIDI and tokenize it using the `midi_to_events` function.
 
 ```
 from anticipation.convert import midi_to_events
@@ -88,7 +88,7 @@ See the [train](train) directory for instructions on preprocessing the Lakh MIDI
 
 ## Reproducing the Human Evaluation Procedure
 
-See the [humaneval](humaneval) directory for instructions on reproducing data used for human evaluations.
+See the [humaneval](humaneval) directory for instructions on reproducing data used for the human evaluation results reported in the paper.
 
 -------------------------------------------------------------------------------------
 
