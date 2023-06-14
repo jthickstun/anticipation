@@ -60,3 +60,19 @@ Delete the ordered training data file, which is superseded by the shuffled versi
 ```
 rm $DATAPATH/lmd_full/train-ordered.txt
 ```
+
+## Levanter Training
+
+This directory contains config files for training Small, Medium, and Large models using the Levanter codebase:
+
+```
+lakh-small.yaml
+lakh-medium.yaml
+lakh-large.yaml
+```
+
+You will need to update this configuration files to point at the location where you have stored your preprocessed data splits.
+
+Use the `split_lakh` [branch](https://github.com/stanford-crfm/levanter/tree/split_lakh) of the Levanter codebase to reproduce the training environment used for the models presented in the Anticipatory Music Transformer paper. This branch includes some minor modifications to the mainline Levanter codebase for processing pre-tokenized music datasets.
+
+See the Levanter codebase for further instructions on training a model.
