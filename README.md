@@ -38,7 +38,7 @@ from transformers import AutoModelForCausalLM
 model = AutoModelForCausalLM.from_pretrained('stanford-crfm/music-medium-800k').cuda()
 ```
 
-You can sample from this model using the custom `generate` function implementated by the anticipation package included in this repository. You can convert generated event tokens to midi using the `events_to_midi` function:
+You can sample from this model using the custom `generate` function implementated by the anticipation package. You can convert generated event tokens to midi using the `events_to_midi` function:
 
 ```
 from anticipation.sample import generate
@@ -58,7 +58,7 @@ from anticipation.convert import midi_to_events
 events = midi_to_events('anticipation/examples/strawberry.mid')
 ```
 
-To isolate a segment of a longer stream of events, we can os the `ops` library to clip the stream and translate the clipped segment to time zero. To isolate a melodic line, we can use `extract_instruments`:
+To isolate a segment of a longer stream of events, use the `ops` library to clip the stream and translate the clipped segment to time zero. To isolate a melodic line, use `extract_instruments`:
 
 ```
 from anticipation import ops
@@ -70,7 +70,7 @@ events = ops.translate(events, -ops.min_time(events, seconds=False))
 events, melody = extract_instruments(segment, [53])
 ```
 
-To generate an accompaniment to an isolated melody, we call the `generate` function using the melody as control inputs. We recombine the generated accompaniment with the melody controls using `ops.combine`:
+To generate an accompaniment to an isolated melody, call the `generate` function using the melody as control inputs. Recombine the generated accompaniment with the melody controls using `ops.combine`:
 
 ```
 history = ops.clip(events, 0, 5, clip_duration=False)
