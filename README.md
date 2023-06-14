@@ -8,6 +8,8 @@ by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlw
 
 This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ contain code for training these models: you may use the preprocessed datasets constructed here as input to your favorite codebase for training autoregressive transformer models. We used the [Levanter](https://github.com/stanford-crfm/levanter) to train models, and include instructions [here](train) for training an Anticipatory Music Transformer with Levanter.
 
+Pretrained models are hosted by the Center for Research on Foundation Models (CRFM) on the [HuggingFace Hub](https://huggingface.co/stanford-crfm). 
+
 This project is licensed under the terms of the Apache License, Version 2.0.
 
 Begin by installing the anticipation package (from the root anticipation package directory).
@@ -28,7 +30,7 @@ pip install -r requirements.txt
 
 See the [Colab](https://colab.research.google.com/drive/1HCQDtGFwROpHRqcmZbV0byqbxDb74YGu?usp=sharing) notebook for an interactive demonstration of music generation using the Anticipatory Music Transformer.
 
-Pretrained models are hosted by the Center for Research on Foundation Models (CRFM) on the [HuggingFace Hub](https://huggingface.co/stanford-crfm). You can load these models using the HuggingFace Transformers package, e.g.:
+You can load a pretrained model using the HuggingFace Transformers package, e.g.:
 
 ```
 from transformers import AutoModelForCausalLM
@@ -87,3 +89,16 @@ See the [train](train) directory for instructions on preprocessing the Lakh MIDI
 ## Reproducing the Human Evaluation Procedure
 
 See the [humaneval](humaneval) directory for instructions on reproducing data used for human evaluations.
+
+-------------------------------------------------------------------------------------
+
+To reference this work, please cite
+
+```bib
+@article{thickstun2023anticipatory,
+  title={Anticipatory Music Transformer},
+  author={Thickstun, John and Hall, David and Donahue, Chris and Liang, Percy},
+  journal={},
+  year={2023}
+}
+```
