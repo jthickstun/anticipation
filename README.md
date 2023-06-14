@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ## Generating Music with an Anticipatory Music Transformer
 
-See the [Colab](https://colab.research.google.com/drive/1HCQDtGFwROpHRqcmZbV0byqbxDb74YGu?usp=sharing) notebook for an interactive demonstration of music generation using the Anticipatory Music Transformer.
+See the [Colab](https://colab.research.google.com/drive/1HCQDtGFwROpHRqcmZbV0byqbxDb74YGu?usp=sharing) notebook for interactive examples of music generation using the Anticipatory Music Transformer.
 
 Load a pretrained model using the HuggingFace Transformers package, e.g.:
 
@@ -57,7 +57,7 @@ Load your own MIDI and tokenize it using the `midi_to_events` function.
 ```
 from anticipation.convert import midi_to_events
 
-events = midi_to_events('anticipation/examples/strawberry.mid')
+events = midi_to_events('examples/strawberry.mid')
 ```
 
 To isolate a segment of a longer stream of events, use the `ops` library to clip the stream and translate the clipped segment to time zero. To isolate a melodic line, use `extract_instruments`:
@@ -69,7 +69,7 @@ from anticipation.tokenize import extract_instruments
 events = ops.clip(events, 41, 41+20)
 events = ops.translate(events, -ops.min_time(events, seconds=False))
 
-events, melody = extract_instruments(segment, [53])
+events, melody = extract_instruments(events, [53])
 ```
 
 To generate an accompaniment to an isolated melody, call the `generate` function using the melody as control inputs. Recombine the generated accompaniment with the melody controls using `ops.combine`:
