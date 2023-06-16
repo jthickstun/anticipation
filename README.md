@@ -1,6 +1,6 @@
 # Anticipatory Music Transformer
 
-Implementation of the methods described in [Anticipatory Music Transformer](https://johnthickstun.com/assets/pdf/anticipatory-music-transformer.pdf).
+Implementation of the methods described in [Anticipatory Music Transformer](https://arxiv.org/abs/2306.08620).
 
 by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlwh.org/), [__Chris Donahue__](https://chrisdonahue.com/), and [__Percy Liang__](https://cs.stanford.edu/~pliang/).
 
@@ -100,7 +100,7 @@ To reference this work, please cite
 @article{thickstun2023anticipatory,
   title={Anticipatory Music Transformer},
   author={Thickstun, John and Hall, David and Donahue, Chris and Liang, Percy},
-  journal={},
+  journal={arXiv preprint arXiv:2306.08620},
   year={2023}
 }
 ```
