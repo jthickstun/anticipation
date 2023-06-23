@@ -2,6 +2,8 @@
 API functions for sampling from anticipatory infilling models.
 """
 
+import math
+
 import torch
 import torch.nn.functional as F
 
@@ -153,7 +155,7 @@ def generate(model, start_time, end_time, inputs=None, controls=None, top_p=1.0,
             anticipated_time = atime - ATIME_OFFSET
         else:
             # nothing to anticipate
-            anticipated_time = MAX_TIME
+            anticipated_time = math.inf
 
         while True:
             while current_time >= anticipated_time - delta:
@@ -169,7 +171,7 @@ def generate(model, start_time, end_time, inputs=None, controls=None, top_p=1.0,
                     anticipated_time = atime - ATIME_OFFSET
                 else:
                     # nothing more to anticipate
-                    anticipated_time = MAX_TIME
+                    anticipated_time = math.inf
 
             new_token = add_token(model, z, tokens, top_p, max(start_time,current_time))
             new_time = new_token[0] - TIME_OFFSET
@@ -235,7 +237,7 @@ def generate_ar(model, start_time, end_time, inputs=None, controls=None, top_p=1
             anticipated_time = atime - TIME_OFFSET
         else:
             # nothing to anticipate
-            anticipated_time = MAX_TIME
+            anticipated_time = math.inf
 
         while True:
             new_token = add_token(model, z, tokens, top_p, max(start_time,current_time))
@@ -261,7 +263,7 @@ def generate_ar(model, start_time, end_time, inputs=None, controls=None, top_p=1
                     anticipated_time = atime - TIME_OFFSET
                 else:
                     # nothing more to anticipate
-                    anticipated_time = MAX_TIME
+                    anticipated_time = math.inf
 
             if debug:
                 new_note = new_token[2] - NOTE_OFFSET
@@ -272,7 +274,7 @@ def generate_ar(model, start_time, end_time, inputs=None, controls=None, top_p=1
             tokens.extend(new_token)
             progress.update(dt)
 
-    if anticipated_time != MAX_TIME:
+    if anticipated_time != math.inf:
         tokens.extend([atime, adur, anote])
 
     return ops.sort(ops.unpad(tokens) + controls)
