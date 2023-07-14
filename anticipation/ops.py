@@ -165,10 +165,8 @@ def anticipate(events, controls, delta=DELTA*TIME_RESOLUTION):
       controls : unconsumed controls (control time > max_time(events) + delta)
     """
 
-    #if len(controls) == 0:
-        #return events, controls
-    len_control = len(control)
-    assert len_control != 0
+    if len(controls) == 0:
+        return events, controls
 
     tokens = []
     event_time = 0
@@ -182,9 +180,6 @@ def anticipate(events, controls, delta=DELTA*TIME_RESOLUTION):
         assert note < CONTROL_OFFSET
         event_time = time - TIME_OFFSET
         tokens.extend([time, dur, note])
-
-    assert len(tokens) = len_control + len(events)
-    tokens = numpy.zeros(len(token))
 
     return tokens, controls
 
