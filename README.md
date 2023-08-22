@@ -8,7 +8,7 @@ by [__John Thickstun__](https://johnthickstun.com/), [__David Hall__](http://dlw
 
 This repository provides the code for creating anticipatory training datasets, and for sampling from models trained with anticipation. It does _not_ contain code for training these models: you may use the preprocessed datasets constructed here as input to your favorite codebase for training autoregressive transformer models. We used the [Levanter](https://github.com/stanford-crfm/levanter) codebase to train models, and include instructions [here](train) for training an Anticipatory Music Transformer with Levanter.
 
-For additional detail about this work, see the [paper](https://johnthickstun.com/assets/pdf/anticipatory-music-transformer.pdf). You may also be interested in this [blog post](https://crfm.stanford.edu/2023/06/14/anticipatory-music-transformer.html).
+For additional detail about this work, see the [paper](https://arxiv.org/abs/2306.08620). You may also be interested in this [blog post](https://crfm.stanford.edu/2023/06/16/anticipatory-music-transformer.html).
 
 Pretrained models are hosted by the Center for Research on Foundation Models (CRFM) on the [HuggingFace Hub](https://huggingface.co/stanford-crfm). 
 
