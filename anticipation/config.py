@@ -33,12 +33,6 @@ MAX_TRACK_TIME_IN_SECONDS = 3600   # exclude very long tracks (longer than 1 hou
 MIN_TRACK_TIME_IN_SECONDS = 10     # exclude very short tracks (less than 10 seconds)
 MIN_TRACK_EVENTS = 100             # exclude very short tracks (less than 100 events)
 
-# LakhMIDI dataset splits
-
-LAKH_SPLITS = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f']
-LAKH_VALID = ['e']
-LAKH_TEST = ['f']
-
 # derived quantities
 
 MAX_TIME = TIME_RESOLUTION*MAX_TIME_IN_SECONDS

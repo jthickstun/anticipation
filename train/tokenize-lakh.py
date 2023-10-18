@@ -8,6 +8,12 @@ from tqdm import tqdm
 from anticipation.config import *
 from anticipation.tokenize import tokenize, tokenize_ia
 
+# LakhMIDI dataset splits
+
+LAKH_SPLITS = ['0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f']
+LAKH_VALID = ['e']
+LAKH_TEST = ['f']
+
 def main(args):
     encoding = 'interarrival' if args.interarrival else 'arrival'
     print('Tokenizing LakhMIDI')
