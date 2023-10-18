@@ -1,16 +1,17 @@
 import os, pickle
 
-import audio
-
 from argparse import ArgumentParser
 from multiprocessing import Pool, RLock
 from tqdm import tqdm
 from glob import glob
 
 from anticipation.config import *
+from anticipation.audiovocab import vocab
+from anticipation.audio import pack_tokens
 
-
+SEQ_LEN = 8192
 CACHE_FILE = 'glob_cache.pkl'
+
 
 def save_cache(files):
     with open(CACHE_FILE, 'wb') as cache:
@@ -21,6 +22,10 @@ def load_cache():
         with open(CACHE_FILE, 'rb') as cache:
             return pickle.load(cache)
     return None
+
+
+def preprocess(ecdcs, output, idx):
+    return pack_tokens(ecdcs, output, idx, vocab, seqlen=SEQ_LEN)
 
 
 def main(args):
@@ -37,7 +42,7 @@ def main(args):
     outputs = [outfiles.format(s=s) for s in range(len(shards))]
 
     with Pool(processes=PREPROC_WORKERS, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
-        results = pool.starmap(audio.pack_tokens, zip(shards, outputs, range(PREPROC_WORKERS)))
+        results = pool.starmap(preprocess, zip(shards, outputs, range(PREPROC_WORKERS)))
 
     files, bad_files, seq_count = (sum(x) for x in zip(*results))
 

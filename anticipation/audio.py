@@ -10,14 +10,6 @@ from encodec.model import EncodecModel
 from encodec import binary
 
 
-CODE_OFFSET = 0
-SCALE_OFFSET = CODE_OFFSET + 1024
-SPECIAL_OFFSET = SCALE_OFFSET + 100
-RESIDUAL_PAD = SPECIAL_OFFSET + 0
-SCALE_PAD = SPECIAL_OFFSET + 1
-SEPARATOR = SPECIAL_OFFSET + 2
-
-
 def read_ecdc(ecdc_file, model, max_frames=None):
     fo = io.BytesIO(ecdc_file.read_bytes())
     metadata = binary.read_ecdc_header(fo)
@@ -65,27 +57,31 @@ def read_ecdc(ecdc_file, model, max_frames=None):
     return audio_length/model.sample_rate, frames, scales
 
 
-def tokenize(frames, scales, residuals=4):
+def tokenize(frames, scales, vocab):
+    residuals = vocab['residuals']
     assert residuals > 0
 
-    # truncate unused residuals and add a token region offset
-    frames = [frame[0,:residuals] + CODE_OFFSET for frame in frames]
+    # truncate unused residuals and add offsets for each residual vocabulary
+    frames = [frame[0,:residuals] for frame in frames]
+    for i in range(residuals):
+        frames[i::residuals] = [token + vocab['residual_offset'][i] for token in frames[i::residuals]]
 
     # represent scales with dummy residuals so that the model can treat everything homogeneously
-    scales = [torch.tensor([s + SCALE_OFFSET] + (residuals-1)*[SCALE_PAD]).view(residuals,1) for s in scales]
+    scales = [torch.tensor([s + vocab['scale_offset']] + (residuals-1)*[vocab['scale_pad']]).view(residuals,1) for s in scales]
 
     # tack the scales onto the front of each (1-second) block of audio codes
     chunks = torch.cat([v for pair in zip(scales, frames) for v in pair], axis=1)
 
     # MusicGen-style interleaving
-    codes = F.pad(chunks, (0,residuals-1), mode='constant', value=RESIDUAL_PAD)
+    codes = F.pad(chunks, (0,residuals-1), mode='constant', value=vocab['residual_pad'])
     codes = torch.stack([torch.roll(codes[i], i) for i in range(residuals)])
 
     # flatten the codes into a sequence
     return codes.T.flatten().tolist()
 
 
-def detokenize(codes, residuals=4):
+def detokenize(codes, vocab):
+    residuals = vocab['residuals']
     assert residuals > 0
 
     # unroll the MusicGen interleaving
@@ -96,14 +92,19 @@ def detokenize(codes, residuals=4):
     chunks = [codes[:, i:i+151].unsqueeze(0) for i in range(0, codes.shape[1], 151)]
 
     # split up the scales and frames
-    scales = [int(chunk[0,0,0]) - SCALE_OFFSET for chunk in chunks]
-    frames = [chunk[:,:,1:] - CODE_OFFSET for chunk in chunks]
+    scales = [int(chunk[0,0,0]) - vocab['scale_offset'] for chunk in chunks]
+    frames = [chunk[:,:,1:] for chunk in chunks]
+
+    # remove offsets for the residual vocabularies
+    for i in range(residuals):
+        frames[i::residuals] = [token - vocab['residual_offset'][i] for code in frames[i::residuals]]
 
     return frames, scales
 
 
-def pack_tokens(ecdcs, output, idx):
+def pack_tokens(ecdcs, output, idx, vocab, seqlen):
     model = EncodecModel.encodec_model_48khz()
+    separator = vocab['separator']
 
     files = bad_files = seqcount = 0
     with open(output, 'w') as outfile:
@@ -115,15 +116,15 @@ def pack_tokens(ecdcs, output, idx):
                 bad_files += 1
                 continue
 
-            tokens = tokenize(frames, scales) 
-            tokens[0:0] = [SEPARATOR, SEPARATOR, SEPARATOR, SEPARATOR]
+            tokens = tokenize(frames, scales, vocab)
+            tokens[0:0] = 4*[separator]
             concatenated_tokens.extend(tokens)    
             files += 1
 
             # write out full sequences to file
-            while len(concatenated_tokens) >= 8192:
-                seq = concatenated_tokens[0:8192]
-                concatenated_tokens = concatenated_tokens[8192:]
+            while len(concatenated_tokens) >= seqlen:
+                seq = concatenated_tokens[0:seqlen]
+                concatenated_tokens = concatenated_tokens[seqlen:]
 
                 outfile.write(' '.join([str(tok) for tok in seq]) + '\n')
                 seqcount += 1
