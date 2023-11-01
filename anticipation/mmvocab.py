@@ -10,7 +10,7 @@ TIME_RESOLUTION = 150                # 150 bins/second to match Encodec
 
 # Encodec
 CODEBOOK_SIZE = 1024
-SCALE_QUANTIZATION = 100
+SCALE_RESOLUTION = 100
 RESIDUALS = 4
 
 # MIDI
@@ -39,7 +39,7 @@ R3_OFFSET = R2_OFFSET + CODEBOOK_SIZE
 SCALE_OFFSET = R3_OFFSET + CODEBOOK_SIZE
 
 # the midi block
-MIDI_OFFSET = SCALE_OFFSET + SCALE_QUANTIZATION
+MIDI_OFFSET = SCALE_OFFSET + SCALE_RESOLUTION
 TIME_OFFSET = MIDI_OFFSET
 PITCH_OFFSET = TIME_OFFSET + MAX_INTERARRIVAL
 REST = PITCH_OFFSET + MAX_PITCH
@@ -62,9 +62,9 @@ VOCAB_SIZE = CONTROL_OFFSET + 9
 vocab = {
     'config' : {
         'time_resolution' : TIME_RESOLUTION,
+        'scale_resolution' : SCALE_RESOLUTION,
         'residuals' : RESIDUALS,
         'codebook_size' : CODEBOOK_SIZE,
-        'scale_quantization' : SCALE_QUANTIZATION,
         'max_interarrival' : MAX_INTERARRIVAL,
         'size' : VOCAB_SIZE
     },
@@ -73,11 +73,21 @@ vocab = {
     'residual_pad' : RESIDUAL_PAD,
     'scale_pad' : SCALE_PAD,
     'rest' : REST,
-    'audiogen' : AUDIOGEN,
-    'midigen' : MIDIGEN,
-    'transcribe' : TRANSCRIBE,
-    'synthesize' : SYNTHESIZE,
     'control_pad' : CONTROL_PAD,
+
+    'task' : {
+        'audiogen' : AUDIOGEN,
+        'midigen' : MIDIGEN,
+        'transcribe' : TRANSCRIBE,
+        'synthesize' : SYNTHESIZE
+    },
+
+    'content_type' : {
+        'clean_audio' : CLEANAUDIO,
+        'clean_midi' : CLEANMIDI,
+        'synthesized_audio' : SYNTHAUDIO,
+        'transcribed_midi' : TRANSMIDI
+    },
 
     'residual_offset' : [R0_OFFSET, R1_OFFSET, R2_OFFSET, R3_OFFSET],
     'scale_offset' : SCALE_OFFSET,
@@ -90,6 +100,7 @@ vocab = {
 if __name__ == '__main__':
     print('Multimodal Vocabulary Configuration:')
     print('  -> Time Resolution:', TIME_RESOLUTION)
+    print('  -> Scale Resolution:', SCALE_RESOLUTION)
     print('  -> Number of Residuals:', RESIDUALS)
     print('  -> Codebook Size:', CODEBOOK_SIZE)
     print('  -> Maximum Interarrival Time:', MAX_INTERARRIVAL)
