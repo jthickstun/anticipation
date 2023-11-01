@@ -48,12 +48,16 @@ DURATION_OFFSET = INSTRUMENT_OFFSET + MAX_INSTR
 
 # the control block 
 CONTROL_OFFSET = DURATION_OFFSET + MAX_DURATION
-AUDIOGEN = CONTROL_OFFSET + 0
-MIDIGEN = CONTROL_OFFSET + 1
-TRANSCRIBE = CONTROL_OFFSET + 2
-SYNTHESIZE = CONTROL_OFFSET + 3
-CONTROL_PAD = CONTROL_OFFSET + 4
-VOCAB_SIZE = CONTROL_OFFSET + 5
+CONTROL_PAD = CONTROL_OFFSET + 0
+AUDIOGEN = CONTROL_OFFSET + 1
+MIDIGEN = CONTROL_OFFSET + 2
+TRANSCRIBE = CONTROL_OFFSET + 3
+SYNTHESIZE = CONTROL_OFFSET + 4
+CLEANAUDIO = CONTROL_OFFSET + 5
+CLEANMIDI = CONTROL_OFFSET + 6
+SYNTHAUDIO = CONTROL_OFFSET + 7
+TRANSMIDI = CONTROL_OFFSET + 8
+VOCAB_SIZE = CONTROL_OFFSET + 9
 
 vocab = {
     'config' : {
@@ -90,24 +94,32 @@ if __name__ == '__main__':
     print('  -> Codebook Size:', CODEBOOK_SIZE)
     print('  -> Maximum Interarrival Time:', MAX_INTERARRIVAL)
     print('  -> Vocabulary Size:', VOCAB_SIZE)
-    print('Multimodal Training Sequence Format:')
+    print('Multimodal Training Sequence Format')
+    print(80*'-')
     print('Sequence Separator :', SEPARATOR)
     print('Audio Block:', AUDIO_OFFSET)
-    print('  -> residual pad :', RESIDUAL_PAD)
-    print('  -> scale pad : ', SCALE_PAD)
-    print('  -> r0 offset :', R0_OFFSET)
-    print('  -> r1 offset :', R1_OFFSET)
-    print('  -> r2 offset: ', R2_OFFSET)
-    print('  -> r3 offset: ', R3_OFFSET)
-    print('  -> scale offset: ', SCALE_OFFSET)
+    print('  * residual pad :', RESIDUAL_PAD)
+    print('  * scale pad :', SCALE_PAD)
+    print('  -> r0 offset:', R0_OFFSET)
+    print('  -> r1 offset:', R1_OFFSET)
+    print('  -> r2 offset:', R2_OFFSET)
+    print('  -> r3 offset:', R3_OFFSET)
+    print('  -> scale offset:', SCALE_OFFSET)
     print('Midi Block:', MIDI_OFFSET)
     print('  -> interarrival time offset :', TIME_OFFSET)
     print('  -> pitch offset :', PITCH_OFFSET)
-    print('  -> rest :', REST)
+    print('    * rest :', REST)
     print('  -> instrument offset :', INSTRUMENT_OFFSET)
     print('  -> duration offset :', DURATION_OFFSET)
     print('Control Block:', CONTROL_OFFSET)
-    print('  -> audio generation flag: ', AUDIOGEN)
-    print('  -> midi generation flag: ', MIDIGEN)
-    print('  -> transcription flag: ', TRANSCRIBE)
-    print('  -> synthesis flag: ', SYNTHESIZE)
+    print('  * control pad :', CONTROL_PAD)
+    print('  -> generation tasks:')
+    print('    * audio generation flag :', AUDIOGEN)
+    print('    * midi generation flag :', MIDIGEN)
+    print('    * transcription flag :', TRANSCRIBE)
+    print('    * synthesis flag :', SYNTHESIZE)
+    print('  -> audio type:')
+    print('    * clean audio :', CLEANAUDIO)
+    print('    * clean midi :', CLEANMIDI)
+    print('    * synthesized audio :', SYNTHAUDIO)
+    print('    * transcribed midi :', TRANSMIDI)
