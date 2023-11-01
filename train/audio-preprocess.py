@@ -6,7 +6,7 @@ from tqdm import tqdm
 from glob import glob
 
 from anticipation.config import *
-from anticipation.audiovocab import vocab
+from anticipation.mmvocab import vocab
 from anticipation.audio import pack_tokens
 
 SEQ_LEN = 8192

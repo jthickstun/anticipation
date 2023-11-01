@@ -58,13 +58,12 @@ def read_ecdc(ecdc_file, model, max_frames=None):
 
 
 def tokenize(frames, scales, vocab):
-    residuals = vocab['residuals']
+    residuals = vocab['config']['residuals']
+    offsets = torch.tensor(vocab['residual_offset'])[:,None]
     assert residuals > 0
 
     # truncate unused residuals and add offsets for each residual vocabulary
-    frames = [frame[0,:residuals] for frame in frames]
-    for i in range(residuals):
-        frames[i::residuals] = [token + vocab['residual_offset'][i] for token in frames[i::residuals]]
+    frames = [frame[0,:residuals] + offsets for frame in frames]
 
     # represent scales with dummy residuals so that the model can treat everything homogeneously
     scales = [torch.tensor([s + vocab['scale_offset']] + (residuals-1)*[vocab['scale_pad']]).view(residuals,1) for s in scales]
@@ -81,7 +80,8 @@ def tokenize(frames, scales, vocab):
 
 
 def detokenize(codes, vocab):
-    residuals = vocab['residuals']
+    residuals = vocab['config']['residuals']
+    offsets = torch.tensor(vocab['residual_offset'])[:,None]
     assert residuals > 0
 
     # unroll the MusicGen interleaving
@@ -96,8 +96,7 @@ def detokenize(codes, vocab):
     frames = [chunk[:,:,1:] for chunk in chunks]
 
     # remove offsets for the residual vocabularies
-    for i in range(residuals):
-        frames[i::residuals] = [token - vocab['residual_offset'][i] for code in frames[i::residuals]]
+    frames = [frame - offsets for frame in frames]
 
     return frames, scales
 
@@ -105,6 +104,10 @@ def detokenize(codes, vocab):
 def pack_tokens(ecdcs, output, idx, vocab, seqlen):
     model = EncodecModel.encodec_model_48khz()
     separator = vocab['separator']
+    task = vocab['task']['audiogen']
+    content = vocab['content_type']['clean_audio']
+    control_pad = vocab['control_pad']
+    z = [task, content, control_pad, control_pad]
 
     files = bad_files = seqcount = 0
     with open(output, 'w') as outfile:
@@ -122,8 +125,9 @@ def pack_tokens(ecdcs, output, idx, vocab, seqlen):
             files += 1
 
             # write out full sequences to file
-            while len(concatenated_tokens) >= seqlen:
-                seq = concatenated_tokens[0:seqlen]
+            while len(concatenated_tokens) >= seqlen-4:
+                seq = concatenated_tokens[0:seqlen-4]
+                seq = z + seq
                 concatenated_tokens = concatenated_tokens[seqlen:]
 
                 outfile.write(' '.join([str(tok) for tok in seq]) + '\n')
