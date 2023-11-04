@@ -6,7 +6,6 @@ from glob import glob
 import torch, torchaudio
 
 from anticipation import audio
-from anticipation.mmvocab import vocab
 
 from encodec.model import EncodecModel
 
@@ -19,7 +18,16 @@ if __name__ == '__main__':
         help='the item to examine')
     parser.add_argument('range', type=int, default=1,
         help='range of items to examine')
+    parser.add_argument('-v', '--vocab', default='mm',
+        help='name of the audio vocabulary used in the input file {audio|mm}')
     args = parser.parse_args()
+
+    if args.vocab == 'audio':
+        from anticipation.audiovocab import vocab
+    elif args.vocab == 'mm':
+        from anticipation.mmvocab import vocab
+    else:
+        raise ValueError(f'Invalid vocabulary type "{args.vocab}"')
 
     separator = vocab['separator']
     scale_offset = vocab['scale_offset']

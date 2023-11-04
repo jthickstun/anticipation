@@ -4,19 +4,30 @@ The vocabulary used for multimodal encoding.
 
 from anticipation.config import *
 
+SCALE_RESOLUTION = 100
+RESIDUALS = 4
+CODEBOOK_SIZE = 1024
+
 RESIDUAL_OFFSET = 0
 SCALE_OFFSET = RESIDUAL_OFFSET + 1024
-SPECIAL_OFFSET = SCALE_OFFSET + 100
+SPECIAL_OFFSET = SCALE_OFFSET + SCALE_RESOLUTION
 RESIDUAL_PAD = SPECIAL_OFFSET + 0
 SCALE_PAD = SPECIAL_OFFSET + 1
 SEPARATOR = SPECIAL_OFFSET + 2
 VOCAB_SIZE = SPECIAL_OFFSET + 3
 
 vocab = {
+    'config' : {
+        'scale_resolution' : SCALE_RESOLUTION,
+        'residuals' : RESIDUALS,
+        'codebook_size' : CODEBOOK_SIZE,
+        'size' : VOCAB_SIZE
+    },
+
     'separator' : SEPARATOR,
     'residual_pad' : RESIDUAL_PAD,
     'scale_pad' : SCALE_PAD,
-    'residuals' : 4,
+    'residuals' : RESIDUALS,
 
     # shared codewords for each codebook
     'residual_offset' : [RESIDUAL_OFFSET, RESIDUAL_OFFSET, RESIDUAL_OFFSET, RESIDUAL_OFFSET],
