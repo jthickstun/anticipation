@@ -29,11 +29,11 @@ def preprocess(ecdcs, output, idx):
 
 
 def main(args):
-    datadir = '/juice4/scr4/nlp/music/audio/48khz/encodec_fma'
-    outfiles = '/juice4/scr4/nlp/music/audio/48khz/encodec_fma-shard-{s}.txt'
+    outfiles = args.datadir + '-shard-{s}.txt'
 
+    print('Tokenizing dataset at ', args.datadir)
     print('Processing...')
-    ecdcs = load_cache() or glob(os.path.join(datadir, '**/*.ecdc'), recursive=True)
+    ecdcs = load_cache() or glob(os.path.join(args.datadir, '**/*.ecdc'), recursive=True)
     if not os.path.exists(CACHE_FILE):
         save_cache(ecdcs)
 
@@ -53,5 +53,6 @@ def main(args):
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='tokenizes an ecdc-encoded audio dataset')
+    parser.add_argument('datadir', help='directory containing the audio dataset to tokenize')
 
     main(parser.parse_args())
