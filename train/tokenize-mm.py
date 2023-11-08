@@ -12,6 +12,7 @@ from encodec.model import EncodecModel
 from anticipation.mmvocab import vocab
 from anticipation.audio import read_ecdc, skew
 from anticipation.audio import tokenize as tokenize_audio
+from anticipation.tokenize import maybe_tokenize
 
 
 PREPROC_WORKERS = 16
@@ -20,6 +21,12 @@ SEQ_LEN = 8192
 
 def compound_to_mm(tokens, vocab, stats=False):
     assert len(tokens) % 5 == 0
+
+    # bail on bad midi files
+    _, _, status = maybe_tokenize(tokens)
+    if status > 0:
+        raise RuntimeError
+
     tokens = tokens.copy()
 
     time_offset = vocab['time_offset']
