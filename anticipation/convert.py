@@ -207,9 +207,9 @@ def midi_to_compound(midifile, vocab, debug=False):
     return tokens
 
 
-def compound_to_midi(tokens, debug=False):
+def compound_to_midi(tokens, vocab, debug=False):
     mid = mido.MidiFile()
-    mid.ticks_per_beat = TIME_RESOLUTION // 2 # 2 beats/second at quarter=120
+    mid.ticks_per_beat = vocab['config']['time_resolution'] // 2 # 2 beats/second at quarter=120
 
     it = iter(tokens)
     time_index = defaultdict(list)
