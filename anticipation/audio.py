@@ -69,27 +69,35 @@ def tokenize(frames, scales, vocab):
     scales = [torch.tensor([s + vocab['scale_offset']] + (residuals-1)*[vocab['scale_pad']]).view(residuals,1) for s in scales]
 
     # tack the scales onto the front of each (1-second) block of audio codes
-    chunks = torch.cat([v for pair in zip(scales, frames) for v in pair], axis=1)
+    chunks = [v for pair in zip(scales, frames) for v in pair]
 
+    return torch.cat(chunks, axis=1)
+
+
+def skew(blocks, block_size, pad):
     # MusicGen-style interleaving
-    codes = F.pad(chunks, (0,residuals-1), mode='constant', value=vocab['residual_pad'])
-    codes = torch.stack([torch.roll(codes[i], i) for i in range(residuals)])
+    codes = F.pad(blocks, (0,block_size-1), mode='constant', value=pad)
+    codes = torch.stack([torch.roll(codes[i], i) for i in range(block_size)])
 
     # flatten the codes into a sequence
     return codes.T.flatten().tolist()
 
 
-def detokenize(codes, vocab):
+def deskew(tokens, block_size):
+    # unroll the MusicGen interleaving
+    blocks = torch.tensor(tokens).reshape(-1, block_size).T
+    blocks = torch.stack([torch.roll(blocks[i], -i) for i in range(block_size)])[:,:-(block_size-1)]
+
+    return blocks
+
+
+def detokenize(blocks, vocab):
     residuals = vocab['config']['residuals']
     offsets = torch.tensor(vocab['residual_offset'])[:,None]
     assert residuals > 0
 
-    # unroll the MusicGen interleaving
-    codes = torch.tensor(codes).reshape(-1, residuals).T
-    codes = torch.stack([torch.roll(codes[i], -i) for i in range(residuals)])[:,:-(residuals-1)]
-
     # split up the codes into (1-second) blocks
-    chunks = [codes[:, i:i+151].unsqueeze(0) for i in range(0, codes.shape[1], 151)]
+    chunks = [blocks[:, i:i+151].unsqueeze(0) for i in range(0, blocks.shape[1], 151)]
 
     # split up the scales and frames
     scales = [int(chunk[0,0,0]) - vocab['scale_offset'] for chunk in chunks]
