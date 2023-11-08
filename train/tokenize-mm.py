@@ -14,7 +14,7 @@ from anticipation.audio import read_ecdc, skew
 from anticipation.audio import tokenize as tokenize_audio
 
 
-PREPROC_WORKERS = 1
+PREPROC_WORKERS = 16
 SEQ_LEN = 8192
 
 
@@ -148,7 +148,7 @@ def pack_tokens(ecdcs, output, idx, z, prepare, seqlen):
                 tokens = prepare(ecdc)
                 files += 1
             except Exception as e:
-                print(e)
+                #print(e)
                 bad_files += 1
                 continue
 
