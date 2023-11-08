@@ -6,7 +6,8 @@ The vocabulary used for multimodal encoding.
 # configuaration
 #
 
-TIME_RESOLUTION = 150                # 150 bins/second to match Encodec
+DELTA = 3                                # seconds of anticipation
+TIME_RESOLUTION = 150                    # time bins/second (150 to match Encodec)
 
 # Encodec
 CODEBOOK_SIZE = 1024
@@ -20,19 +21,19 @@ MAX_INTERARRIVAL_IN_SECONDS = 1          # maximum interarrival time
 MAX_DURATION_IN_SECONDS = 10             # maximum duration of a note
 
 MAX_DURATION = 10*TIME_RESOLUTION        # 10 seconds maximum note duration
-MAX_INTERARRIVAL = 1*TIME_RESOLUTION + 1 # 1 second maximum interarrival time
+MAX_INTERARRIVAL = 1*TIME_RESOLUTION     # 1 second maximum interarrival time
 
 #
 # vocabulary
 #
 
 SEPARATOR = 0
+RESIDUAL_PAD = 1
 
 # the audio block
-AUDIO_OFFSET = 1
-RESIDUAL_PAD = AUDIO_OFFSET + 0
-SCALE_PAD = AUDIO_OFFSET + 1
-R0_OFFSET = AUDIO_OFFSET + 2
+AUDIO_OFFSET = 2
+SCALE_PAD = AUDIO_OFFSET + 0
+R0_OFFSET = AUDIO_OFFSET + 1
 R1_OFFSET = R0_OFFSET + CODEBOOK_SIZE
 R2_OFFSET = R1_OFFSET + CODEBOOK_SIZE
 R3_OFFSET = R2_OFFSET + CODEBOOK_SIZE
@@ -41,7 +42,7 @@ SCALE_OFFSET = R3_OFFSET + CODEBOOK_SIZE
 # the midi block
 MIDI_OFFSET = SCALE_OFFSET + SCALE_RESOLUTION
 TIME_OFFSET = MIDI_OFFSET
-PITCH_OFFSET = TIME_OFFSET + MAX_INTERARRIVAL
+PITCH_OFFSET = TIME_OFFSET + MAX_INTERARRIVAL + 1
 REST = PITCH_OFFSET + MAX_PITCH
 INSTRUMENT_OFFSET = PITCH_OFFSET + MAX_PITCH + 1
 DURATION_OFFSET = INSTRUMENT_OFFSET + MAX_INSTR
@@ -61,11 +62,13 @@ VOCAB_SIZE = CONTROL_OFFSET + 9
 
 vocab = {
     'config' : {
+        'anticipation' : DELTA*TIME_RESOLUTION,
         'time_resolution' : TIME_RESOLUTION,
         'scale_resolution' : SCALE_RESOLUTION,
         'residuals' : RESIDUALS,
         'codebook_size' : CODEBOOK_SIZE,
         'max_interarrival' : MAX_INTERARRIVAL,
+        'max_duration' : MAX_DURATION,
         'size' : VOCAB_SIZE
     },
 
@@ -89,12 +92,15 @@ vocab = {
         'transcribed_midi' : TRANSMIDI
     },
 
+    'audio_offset' : AUDIO_OFFSET,
     'residual_offset' : [R0_OFFSET, R1_OFFSET, R2_OFFSET, R3_OFFSET],
     'scale_offset' : SCALE_OFFSET,
+    'midi_offset' : MIDI_OFFSET,
     'time_offset' : TIME_OFFSET,
     'pitch_offset' : PITCH_OFFSET,
     'instrument_offset' : INSTRUMENT_OFFSET,
     'duration_offset' : DURATION_OFFSET,
+    'control_offset' : CONTROL_OFFSET
 }
 
 if __name__ == '__main__':
