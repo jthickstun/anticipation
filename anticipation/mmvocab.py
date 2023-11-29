@@ -7,11 +7,11 @@ The vocabulary used for multimodal encoding.
 #
 
 DELTA = 3                                # seconds of anticipation
-TIME_RESOLUTION = 150                    # time bins/second (150 to match Encodec)
 
 # Encodec
+FRAMES_PER_SECOND = 150 + 1              # 1 scale frame +  150 audio frames
 CODEBOOK_SIZE = 1024
-SCALE_RESOLUTION = 100
+SCALE_QUANTIZATION = 100
 RESIDUALS = 4
 
 # MIDI
@@ -20,8 +20,9 @@ MAX_INSTR = 128 + 1                      # 129 MIDI instruments (128 + drums)
 MAX_INTERARRIVAL_IN_SECONDS = 1          # maximum interarrival time
 MAX_DURATION_IN_SECONDS = 10             # maximum duration of a note
 
-MAX_DURATION = 10*TIME_RESOLUTION        # 10 seconds maximum note duration
-MAX_INTERARRIVAL = 1*TIME_RESOLUTION     # 1 second maximum interarrival time
+MIDI_QUANTIZATION = 100                  # time bins/second
+MAX_DURATION = 10*MIDI_QUANTIZATION      # 10 seconds maximum note duration
+MAX_INTERARRIVAL = 1*MIDI_QUANTIZATION   # 1 second maximum interarrival time
 
 #
 # vocabulary
@@ -30,25 +31,8 @@ MAX_INTERARRIVAL = 1*TIME_RESOLUTION     # 1 second maximum interarrival time
 SEPARATOR = 0
 RESIDUAL_PAD = 1
 
-# the audio block
-AUDIO_OFFSET = 2
-SCALE_PAD = AUDIO_OFFSET + 0
-R0_OFFSET = AUDIO_OFFSET + 1
-R1_OFFSET = R0_OFFSET + CODEBOOK_SIZE
-R2_OFFSET = R1_OFFSET + CODEBOOK_SIZE
-R3_OFFSET = R2_OFFSET + CODEBOOK_SIZE
-SCALE_OFFSET = R3_OFFSET + CODEBOOK_SIZE
-
-# the midi block
-MIDI_OFFSET = SCALE_OFFSET + SCALE_RESOLUTION
-TIME_OFFSET = MIDI_OFFSET
-PITCH_OFFSET = TIME_OFFSET + MAX_INTERARRIVAL + 1
-REST = PITCH_OFFSET + MAX_PITCH
-INSTRUMENT_OFFSET = PITCH_OFFSET + MAX_PITCH + 1
-DURATION_OFFSET = INSTRUMENT_OFFSET + MAX_INSTR
-
 # the control block 
-CONTROL_OFFSET = DURATION_OFFSET + MAX_DURATION
+CONTROL_OFFSET = 2
 CONTROL_PAD = CONTROL_OFFSET + 0
 AUDIOGEN = CONTROL_OFFSET + 1
 MIDIGEN = CONTROL_OFFSET + 2
@@ -58,13 +42,33 @@ CLEANAUDIO = CONTROL_OFFSET + 5
 CLEANMIDI = CONTROL_OFFSET + 6
 SYNTHAUDIO = CONTROL_OFFSET + 7
 TRANSMIDI = CONTROL_OFFSET + 8
-VOCAB_SIZE = CONTROL_OFFSET + 9
+
+# the audio block
+AUDIO_OFFSET = CONTROL_OFFSET+9
+SCALE_PAD = AUDIO_OFFSET + 0
+R0_OFFSET = AUDIO_OFFSET + 1
+R1_OFFSET = R0_OFFSET + CODEBOOK_SIZE
+R2_OFFSET = R1_OFFSET + CODEBOOK_SIZE
+R3_OFFSET = R2_OFFSET + CODEBOOK_SIZE
+SCALE_OFFSET = R3_OFFSET + CODEBOOK_SIZE
+
+# the midi block
+MIDI_OFFSET = SCALE_OFFSET + SCALE_QUANTIZATION
+TIME_OFFSET = MIDI_OFFSET
+PITCH_OFFSET = TIME_OFFSET + MAX_INTERARRIVAL + 1
+REST = PITCH_OFFSET + MAX_PITCH
+INSTRUMENT_OFFSET = PITCH_OFFSET + MAX_PITCH + 1
+DURATION_OFFSET = INSTRUMENT_OFFSET + MAX_INSTR
+
+VOCAB_SIZE = DURATION_OFFSET + MAX_DURATION
 
 vocab = {
     'config' : {
-        'anticipation' : DELTA*TIME_RESOLUTION,
-        'time_resolution' : TIME_RESOLUTION,
-        'scale_resolution' : SCALE_RESOLUTION,
+        'skew' : False,
+        'anticipation' : DELTA,
+        'midi_quantization' : MIDI_QUANTIZATION,
+        'audio_fps' : FRAMES_PER_SECOND,
+        'scale_resolution' : SCALE_QUANTIZATION,
         'residuals' : RESIDUALS,
         'codebook_size' : CODEBOOK_SIZE,
         'max_interarrival' : MAX_INTERARRIVAL,
@@ -105,29 +109,18 @@ vocab = {
 
 if __name__ == '__main__':
     print('Multimodal Vocabulary Configuration:')
-    print('  -> Time Resolution:', TIME_RESOLUTION)
-    print('  -> Scale Resolution:', SCALE_RESOLUTION)
+    print('  -> Audio Frames Per Second:', FRAMES_PER_SECOND)
+    print('  -> Scale Quantization:', SCALE_QUANTIZATION)
     print('  -> Number of Residuals:', RESIDUALS)
     print('  -> Codebook Size:', CODEBOOK_SIZE)
+    print('  -> Midi Quantization:', MIDI_QUANTIZATION)
     print('  -> Maximum Interarrival Time:', MAX_INTERARRIVAL)
+    print('  -> Maximum Midi Duration:', MAX_DURATION)
     print('  -> Vocabulary Size:', VOCAB_SIZE)
     print('Multimodal Training Sequence Format')
     print(80*'-')
     print('Sequence Separator :', SEPARATOR)
-    print('Audio Block:', AUDIO_OFFSET)
-    print('  * residual pad :', RESIDUAL_PAD)
-    print('  * scale pad :', SCALE_PAD)
-    print('  -> r0 offset:', R0_OFFSET)
-    print('  -> r1 offset:', R1_OFFSET)
-    print('  -> r2 offset:', R2_OFFSET)
-    print('  -> r3 offset:', R3_OFFSET)
-    print('  -> scale offset:', SCALE_OFFSET)
-    print('Midi Block:', MIDI_OFFSET)
-    print('  -> interarrival time offset :', TIME_OFFSET)
-    print('  -> pitch offset :', PITCH_OFFSET)
-    print('    * rest :', REST)
-    print('  -> instrument offset :', INSTRUMENT_OFFSET)
-    print('  -> duration offset :', DURATION_OFFSET)
+    print('Residual Pad :', RESIDUAL_PAD)
     print('Control Block:', CONTROL_OFFSET)
     print('  * control pad :', CONTROL_PAD)
     print('  -> generation tasks:')
@@ -140,3 +133,16 @@ if __name__ == '__main__':
     print('    * clean midi :', CLEANMIDI)
     print('    * synthesized audio :', SYNTHAUDIO)
     print('    * transcribed midi :', TRANSMIDI)
+    print('Audio Block:', AUDIO_OFFSET)
+    print('  * scale pad :', SCALE_PAD)
+    print('  -> r0 offset:', R0_OFFSET)
+    print('  -> r1 offset:', R1_OFFSET)
+    print('  -> r2 offset:', R2_OFFSET)
+    print('  -> r3 offset:', R3_OFFSET)
+    print('  -> scale offset:', SCALE_OFFSET)
+    print('Midi Block:', MIDI_OFFSET)
+    print('  -> interarrival time offset :', TIME_OFFSET)
+    print('  -> pitch offset :', PITCH_OFFSET)
+    print('    * rest :', REST)
+    print('  -> instrument offset :', INSTRUMENT_OFFSET)
+    print('  -> duration offset :', DURATION_OFFSET)

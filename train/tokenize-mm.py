@@ -7,16 +7,10 @@ from pathlib import Path
 
 import torch
 
-from encodec.model import EncodecModel
-
 from anticipation.mmvocab import vocab
 from anticipation.audio import read_ecdc, skew
 from anticipation.audio import tokenize as tokenize_audio
 from anticipation.tokenize import maybe_tokenize
-
-
-PREPROC_WORKERS = 16
-SEQ_LEN = 8192
 
 
 def compound_to_mm(tokens, vocab, stats=False):
@@ -34,7 +28,7 @@ def compound_to_mm(tokens, vocab, stats=False):
     instr_offset = vocab['instrument_offset']
     dur_offset = vocab['duration_offset']
 
-    time_res = vocab['config']['time_resolution']
+    time_res = vocab['config']['midi_quantization']
     max_duration = vocab['config']['max_duration']
     max_interarrival = vocab['config']['max_interarrival']
 
@@ -86,50 +80,94 @@ def anticipate(audio, midi, delta):
     if len(midi) == 0:
         return audio 
 
-    time_resolution = vocab['config']['time_resolution']
+    audio_fps = vocab['config']['audio_fps']
+    midi_quantization = vocab['config']['midi_quantization']
     time_offset = vocab['time_offset']
     blocks = audio.clone().T
 
-    time = delta
+    offset = 0
+    time = delta*midi_quantization
+    time_ratio = audio_fps / float(midi_quantization)
     for block in midi.T:
         time += block[0] - time_offset
 
-        # audio scale makes this off by one
-        # (very annoying; but good news is this should generalize?)
-        seqtime = time + math.floor(time/float(time_resolution)) 
-
+        seqtime = math.floor(time*time_ratio) 
         seqpos = max(seqtime, 0) # events in first delta interval go at the start
-        seqpos = min(seqtime, len(blocks)) # events after the sequence go at the end
-        blocks = torch.cat((blocks[:seqpos], block.unsqueeze(0), blocks[seqpos:]), dim=0)
-        time += 1
+        seqpos = min(seqpos, len(blocks)) # events after the sequence go at the end
+
+        blocks = torch.cat((blocks[:seqpos+offset], block.unsqueeze(0), blocks[seqpos+offset:]), dim=0)
+        offset += 1
 
     return blocks.T
 
 
-def prepare_mm(ecdc, model, vocab, anticipation):
+def fast_anticipate(audio, midi, delta):
+    if len(midi) == 0:
+        return audio 
+
+    audio_fps = vocab['config']['audio_fps']
+    midi_quantization = vocab['config']['midi_quantization']
+    time_offset = vocab['time_offset']
+    audio = audio.clone().T
+
+    audio_idx = offset = 0
+    time = delta*midi_quantization
+    time_ratio = audio_fps / float(midi_quantization)
+    max_pos = len(audio)
+    blocks = torch.empty(audio.shape[0]+midi.shape[1], audio.shape[1], dtype=audio.dtype)
+    for midi_block in midi.T:
+        time += midi_block[0] - time_offset
+
+        seqtime = math.floor(time*time_ratio) 
+        seqpos = max(seqtime, 0)      # events in first delta interval go at the start
+        seqpos = min(seqpos, max_pos) # events after the sequence go at the end
+
+        blocks[audio_idx+offset:seqpos+offset] = audio[audio_idx:seqpos]
+        blocks[seqpos+offset] = midi_block
+        audio_idx = seqpos
+        offset += 1
+
+    blocks[audio_idx+offset:] = audio[audio_idx:]
+
+    return blocks.T
+
+
+def prepare_mm(ecdc, vocab, anticipation):
     separator = vocab['separator']
 
-    audio_length, frames, scales = read_ecdc(Path(ecdc), model)
+    with open(f'{ecdc}.cache.txt', 'r') as f:
+        cached_tokens = [int(token) for token in f.read().split()]
+
     midifile = ecdc.replace('.ecdc','.ismir2022_base.mid.compound.txt')
     with open(midifile, 'r') as f:
         compound_tokens = [int(token) for token in f.read().split()]
 
+    audio_blocks = torch.tensor(cached_tokens).reshape(-1, 4).T
     midi_blocks = compound_to_mm(compound_tokens, vocab)
-    audio_blocks = tokenize_audio(frames, scales, vocab)
 
-    blocks = anticipate(audio_blocks, midi_blocks, anticipation)
-    tokens = skew(blocks, 4, pad=vocab['residual_pad'])
+    blocks = fast_anticipate(audio_blocks, midi_blocks, anticipation)
+    if vocab['config']['skew']:
+        tokens = skew(blocks, 4, pad=vocab['residual_pad'])
+    else:
+        tokens = blocks.T.flatten().tolist()
+
     tokens[0:0] = 4*[separator]
     return tokens
 
 
-def prepare_audio(ecdc, model, vocab):
+def prepare_audio(ecdc, vocab):
     separator = vocab['separator']
 
-    audio_length, frames, scales = read_ecdc(Path(ecdc), model)
+    #audio_length, frames, scales = read_ecdc(Path(ecdc), model)
+    #blocks = tokenize_audio(frames, scales, vocab)
 
-    blocks = tokenize_audio(frames, scales, vocab)
-    tokens = skew(blocks, 4, pad=vocab['residual_pad'])
+    with open(f'{ecdc}.cache.txt', 'r') as f:
+        tokens = [int(token) for token in f.read().split()]
+
+    if vocab['config']['skew']:
+        blocks = torch.tensor(tokens).reshape(-1, 4).T
+        tokens = skew(blocks, 4, pad=vocab['residual_pad'])
+
     tokens[0:0] = 4*[separator]
     return tokens
 
@@ -141,7 +179,12 @@ def prepare_midi(midifile, vocab):
         compound_tokens = [int(token) for token in f.read().split()]
 
     blocks = compound_to_mm(compound_tokens, vocab)
-    tokens = skew(blocks, 4, pad=vocab['residual_pad'])
+
+    if vocab['config']['skew']:
+        tokens = skew(blocks, 4, pad=vocab['residual_pad'])
+    else:
+        tokens = blocks.T.flatten().tolist()
+
     tokens[0:0] = 4*[separator]
     return tokens
 
@@ -172,88 +215,101 @@ def pack_tokens(ecdcs, output, idx, z, prepare, seqlen):
     return (files, bad_files, seqcount)
 
 
-def preprocess_transcribe(ecdcs, output, idx):
+def preprocess_transcribe(ecdcs, output, seqlen, idx):
     task = vocab['task']['transcribe']
     input_content = vocab['content_type']['clean_audio']
     output_content = vocab['content_type']['transcribed_midi']
     control_pad = vocab['control_pad']
-    z = [task, input_content, output_content, control_pad]
+    z = [task, output_content, input_content, control_pad]
 
     anticipation = vocab['config']['anticipation']
-    model = EncodecModel.encodec_model_48khz()
-    prepare = lambda ecdc: prepare_mm(ecdc, model, vocab, -anticipation)
+    prepare = lambda ecdc: prepare_mm(ecdc, vocab, anticipation)
 
-    return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=SEQ_LEN)
+    return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=seqlen)
 
 
-def preprocess_synthesize(ecdcs, output, idx):
+def preprocess_synthesize(ecdcs, output, seqlen, idx):
     task = vocab['task']['synthesize']
     input_content = vocab['content_type']['transcribed_midi']
     output_content = vocab['content_type']['clean_audio']
     control_pad = vocab['control_pad']
-    z = [task, input_content, output_content, control_pad]
+    z = [task, output_content, input_content, control_pad]
 
     anticipation = vocab['config']['anticipation']
-    model = EncodecModel.encodec_model_48khz()
-    prepare = lambda ecdc: prepare_mm(ecdc, model, vocab, anticipation)
+    prepare = lambda ecdc: prepare_mm(ecdc, vocab, -anticipation)
 
-    return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=SEQ_LEN)
+    return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=seqlen)
 
 
-def preprocess_audio(ecdcs, output, idx):
+def preprocess_audio(ecdcs, output, seqlen, idx):
     task = vocab['task']['audiogen']
-    input_content = vocab['content_type']['clean_audio']
+    output_content = vocab['content_type']['clean_audio']
     control_pad = vocab['control_pad']
-    z = [task, input_content, control_pad, control_pad]
+    z = [task, output_content, control_pad, control_pad]
 
-    model = EncodecModel.encodec_model_48khz()
-    prepare = lambda ecdc: prepare_audio(ecdc, model, vocab)
+    prepare = lambda ecdc: prepare_audio(ecdc, vocab)
 
-    return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=SEQ_LEN)
+    return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=seqlen)
 
 
-def preprocess_cleanmidi(midifiles, output, idx):
-    task = vocab['task']['audiogen']
-    input_content = vocab['content_type']['clean_midi']
+def preprocess_cleanmidi(midifiles, output, seqlen, idx):
+    task = vocab['task']['midigen']
+    output_content = vocab['content_type']['clean_midi']
     control_pad = vocab['control_pad']
-    z = [task, input_content, control_pad, control_pad]
+    z = [task, output_content, control_pad, control_pad]
 
     prepare = lambda mid: prepare_midi(mid, vocab)
 
-    return pack_tokens(midifiles, output, idx, z, prepare, seqlen=SEQ_LEN)
+    return pack_tokens(midifiles, output, idx, z, prepare, seqlen=seqlen)
+
+
+def preprocess_transmidi(midifiles, output, seqlen, idx):
+    task = vocab['task']['midigen']
+    output_content = vocab['content_type']['transcribed_midi']
+    control_pad = vocab['control_pad']
+    z = [task, output_content, control_pad, control_pad]
+
+    prepare = lambda mid: prepare_midi(mid, vocab)
+
+    return pack_tokens(midifiles, output, idx, z, prepare, seqlen=seqlen)
 
 
 preproc_func = {
     'audiogen' : preprocess_audio,
     'synthesize' : preprocess_synthesize,
     'transcribe' : preprocess_transcribe,
-    'midigen' : preprocess_cleanmidi
+    'midigen' : preprocess_cleanmidi,
+    'trans_midigen' : preprocess_transmidi,
 }
 
 
 def main(args):
     print('Tokenizing a multimodal dataset at:', args.datadir)
     print('Tokenization parameters:')
-    print(f"  anticipation interval = {vocab['config']['anticipation']} frames")
-    print('Processing...')
+    print(f"  type = {args.type}")
+    print(f"  context = {args.context}")
+    print(f"  anticipation interval = {vocab['config']['anticipation']} seconds")
+    print(f"  skew = {vocab['config']['skew']}")
 
-    if args.type == 'midigen':
+    if 'midigen' in args.type:
         files = glob(os.path.join(args.datadir, '**/*.compound.txt'), recursive=True)
     else:
         files = glob(os.path.join(args.datadir, '**/*.ecdc'), recursive=True)
 
-    n = len(files) // PREPROC_WORKERS
-    shards = [files[i:i+n] for i in range(PREPROC_WORKERS)] # dropping a few tracks (< PREPROC_WORKERS)
-    outfiles = args.datadir + '.{t}.shard-{s}.txt'
+    n = len(files) // args.workers
+    shards = [files[i:i+n] for i in range(args.workers)] # dropping a few tracks (< args.workers)
+    outfiles = os.path.join(args.outdir, os.path.basename(args.datadir) + '.{t}.shard-{s:03}.txt')
     print('Outputs to:', outfiles)
     outputs = [outfiles.format(t=args.type, s=s) for s in range(len(shards))]
+    context = args.workers*[args.context]
 
+    print('Processing...')
     if args.debug:
-        results = preproc_func[args.type](shards[0], outputs[0], 0)
+        results = preproc_func[args.type](shards[0], outputs[0], args.context, 0)
         results = [results]
     else:
-        with Pool(processes=PREPROC_WORKERS, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
-            results = pool.starmap(preproc_func[args.type], zip(shards, outputs, range(PREPROC_WORKERS)))
+        with Pool(processes=args.workers, initargs=(RLock(),), initializer=tqdm.set_lock) as pool:
+            results = pool.starmap(preproc_func[args.type], zip(shards, outputs, context, range(args.workers)))
 
     files, bad_files, seq_count = (sum(x) for x in zip(*results))
 
@@ -265,7 +321,10 @@ def main(args):
 if __name__ == '__main__':
     parser = ArgumentParser(description='tokenizes a multimodal dataset (ecdc audio paired with midi)')
     parser.add_argument('datadir', help='directory containing the dataset to tokenize')
+    parser.add_argument('outdir', help='location to store the tokenized datafile')
     parser.add_argument('type', help='{audiogen|synthesize|transcribe|midigen}')
+    parser.add_argument('context', type=int, help='context length for packing training sequences')
+    parser.add_argument('--workers', type=int, default=16, help='number of workers/shards')
     parser.add_argument('--debug', action='store_true', help='debugging (single shard; non-parallel)')
 
     main(parser.parse_args())

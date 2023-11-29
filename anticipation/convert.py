@@ -126,7 +126,7 @@ def interarrival_to_midi(tokens, debug=False):
 
 
 def midi_to_compound(midifile, vocab, debug=False):
-    time_res = vocab['config']['time_resolution']
+    time_res = vocab['config']['midi_quantization']
 
     if type(midifile) == str:
         midi = mido.MidiFile(midifile)
@@ -209,7 +209,7 @@ def midi_to_compound(midifile, vocab, debug=False):
 
 def compound_to_midi(tokens, vocab, debug=False):
     mid = mido.MidiFile()
-    mid.ticks_per_beat = vocab['config']['time_resolution'] // 2 # 2 beats/second at quarter=120
+    mid.ticks_per_beat = vocab['config']['midi_quantization'] // 2 # 2 beats/second at quarter=120
 
     it = iter(tokens)
     time_index = defaultdict(list)

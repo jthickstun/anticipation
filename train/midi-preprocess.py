@@ -28,6 +28,7 @@ def convert_midi(filename, debug=False):
 
 
 def main(args):
+    print(f'Midi time quantization is: {vocab["config"]["midi_quantization"]}')
     filenames = glob(args.dir + '/**/*.mid', recursive=True) \
             + glob(args.dir + '/**/*.midi', recursive=True)
 

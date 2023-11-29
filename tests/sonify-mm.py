@@ -28,12 +28,6 @@ def mm_to_compound(blocks, vocab, debug=False):
     out[3::5] = [tok - instr_offset for tok in tokens[2::4]]
     out[4::5] = (len(tokens)//4)*[72] # default velocity
 
-    #print(min(out[0::5]), max(out[0::5]))
-    #print(min(out[1::5]), max(out[1::5]))
-    #print(min(out[2::5]), max(out[2::5]))
-    #print(min(out[3::5]), max(out[3::5]))
-    #print(min(out[4::5]), max(out[4::5]))
-
     # convert interarrival times to arrival times
     time = 0
     out_norest = []
@@ -48,17 +42,23 @@ def mm_to_compound(blocks, vocab, debug=False):
     return out_norest
 
 
-def split(blocks, vocab):
+def split(blocks, vocab, debug=False):
     """ split token blocks into midi and audio"""
 
     midi_offset = vocab['midi_offset']
 
     audio = torch.zeros([4,0], dtype=blocks.dtype)
     midi = torch.zeros([4,0], dtype=blocks.dtype)
-    for block in blocks.T:
+    time = 0
+    for i, block in enumerate(blocks.T):
         if block[0] < midi_offset:
             audio = torch.cat((audio, block.unsqueeze(1)), dim=1)
         else:
+            if debug:
+                print('MIDI event at sequence position', i)
+                print('  MIDI sequence interrarival time is', )
+
+
             midi = torch.cat((midi, block.unsqueeze(1)), dim=1)
 
     return audio, midi 
@@ -74,6 +74,7 @@ if __name__ == '__main__':
         help='range of items to examine')
     parser.add_argument('-v', '--vocab', default='mm',
         help='name of the audio vocabulary used in the input file {audio|mm}')
+    parser.add_argument('--debug', action='store_true', help='verbose debugging outputs')
     args = parser.parse_args()
 
     if args.vocab == 'audio':
@@ -86,6 +87,8 @@ if __name__ == '__main__':
     separator = vocab['separator']
     scale_offset = vocab['scale_offset']
     scale_res = vocab['config']['scale_resolution']
+    skew = vocab['config']['skew']
+    print(separator, scale_offset, scale_res, skew)
     model = EncodecModel.encodec_model_48khz()
     with open(args.filename, 'r') as f:
         for i, line in enumerate(f):
@@ -103,10 +106,13 @@ if __name__ == '__main__':
             # strip sequence separators
             tokens = [token for token in tokens if token != separator]
 
-            blocks = audio.deskew(tokens, 4)
+            if skew:
+                blocks = audio.deskew(tokens, 4)
+            else:
+                blocks = torch.tensor(tokens).reshape(-1, 4).T
 
             if args.vocab == 'mm':
-                blocks, midi_blocks = split(blocks, vocab)
+                blocks, midi_blocks = split(blocks, vocab, args.debug)
                 if midi_blocks.shape[1] > 0:
                     mid = compound_to_midi(mm_to_compound(midi_blocks, vocab), vocab)
                     mid.save(f'output/{Path(args.filename).stem}-{i}.mid')
@@ -115,13 +121,20 @@ if __name__ == '__main__':
                 continue
 
             # seek for the first complete frame
-            for seek, block in enumerate(blocks):
+            for seek, block in enumerate(blocks.T):
                 if scale_offset <= block[0] < scale_offset + scale_res:
                     break
 
-            blocks = blocks[seek:]
+            print('Seek to:', seek)
+
+            blocks = blocks[:,seek:]
             if blocks.shape[1] > 0:
                 frames, scales = audio.detokenize(blocks, vocab)
+                print(scales)
+                print(frames[-1].shape)
+                if frames[-1].shape[2] == 1:
+                    frames = frames[:-1]
+                    scales = scales[:-1]
                 with torch.no_grad():
                     wav = model.decode(zip(frames, [torch.tensor(s/100.).view(1) for s in scales]))[0]
                 torchaudio.save(f'output/{Path(args.filename).stem}-{i}.wav', wav, model.sample_rate)
