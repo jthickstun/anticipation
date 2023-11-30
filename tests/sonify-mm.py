@@ -84,6 +84,10 @@ if __name__ == '__main__':
         raise ValueError(f'Invalid vocabulary type "{args.vocab}"')
 
     separator = vocab['separator']
+    scale_pad = vocab['scale_pad']
+    print(f'scale pad: {scale_pad}')
+    scale_offset = vocab['scale_offset']
+    print(f'scale offset: {scale_offset}')
     scale_offset = vocab['scale_offset']
     scale_res = vocab['config']['scale_resolution']
     model = EncodecModel.encodec_model_48khz()
@@ -100,28 +104,63 @@ if __name__ == '__main__':
             # strip the control block
             tokens = tokens[4:]
 
+            # strip a bit more than the control block
+            #tokens = tokens[30:]
+
             # strip sequence separators
             tokens = [token for token in tokens if token != separator]
 
+            print(tokens[:40])
+
+            for i, token in enumerate(tokens):
+                if token == scale_pad:
+                    print(f"scale pad at {i}")
+                if token >= scale_offset and token < scale_offset + scale_res:
+                    print(f"scale token at {i}")
+
             blocks = audio.deskew(tokens, 4)
 
-            if args.vocab == 'mm':
-                blocks, midi_blocks = split(blocks, vocab)
-                if midi_blocks.shape[1] > 0:
-                    mid = compound_to_midi(mm_to_compound(midi_blocks, vocab), vocab)
-                    mid.save(f'output/{Path(args.filename).stem}-{i}.mid')
-
-            if blocks.shape[1] == 0:
-                continue
+            print(blocks.shape)
+            print(blocks[:,0:10])
 
             # seek for the first complete frame
-            for seek, block in enumerate(blocks):
-                if scale_offset <= block[0] < scale_offset + scale_res:
-                    break
+            first_seek = -1
+            for seek in range(blocks.shape[1]):
+                if blocks[0,seek] >= scale_offset and blocks[0,seek] < scale_offset + scale_res:
+                    if first_seek == -1:
+                        first_seek = seek
+                    print(seek)
+            # for seek, block in enumerate(blocks):
+            #     print(block[0])
+            #     print(scale_offset, scale_offset + scale_res)
+            #     if block[0].item() >= scale_offset and block[0].item() < scale_offset + scale_res:
+            #         break
 
-            blocks = blocks[seek:]
+            seek = first_seek
+            print(seek)
+            print(blocks.shape)
+            blocks = blocks[:,seek:]
+            print("post scale seek")
+            print(blocks.shape)
+            
+
+            print('Seek index:', seek)
             if blocks.shape[1] > 0:
                 frames, scales = audio.detokenize(blocks, vocab)
+                print(len(frames))
+                print(scales)
+                print(frames[-1].shape)
+                for frame in frames:
+                    print(frame.shape)
+                #if frames[-1].shape[2] == 1:
+                frames = frames[1:-1]
+                scales = scales[1:-1]
+                print(len(frames))
+                print(scales)
+                for frame in frames:
+                    print(frame.shape)
                 with torch.no_grad():
                     wav = model.decode(zip(frames, [torch.tensor(s/100.).view(1) for s in scales]))[0]
-                torchaudio.save(f'output/{Path(args.filename).stem}-{i}.wav', wav, model.sample_rate)
+
+                save_path = '/nlp/scr/kathli/output/mm/49fupsao'
+                torchaudio.save(f'{save_path}/{Path(args.filename).stem}-{i}.wav', wav, model.sample_rate)

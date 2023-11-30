@@ -96,6 +96,8 @@ def detokenize(blocks, vocab):
     offsets = torch.tensor(vocab['residual_offset'])[:,None]
     assert residuals > 0
 
+    print(blocks)
+
     # split up the codes into (1-second) blocks
     chunks = [blocks[:, i:i+151].unsqueeze(0) for i in range(0, blocks.shape[1], 151)]
 
