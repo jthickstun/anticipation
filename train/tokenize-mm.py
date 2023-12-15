@@ -297,7 +297,7 @@ def main(args):
         files = glob(os.path.join(args.datadir, '**/*.ecdc'), recursive=True)
 
     n = len(files) // args.workers
-    shards = [files[i:i+n] for i in range(args.workers)] # dropping a few tracks (< args.workers)
+    shards = [files[i*n:(i+1)*n] for i in range(args.workers)] # dropping a few tracks (< args.workers)
     outfiles = os.path.join(args.outdir, os.path.basename(args.datadir) + '.{t}.shard-{s:03}.txt')
     print('Outputs to:', outfiles)
     outputs = [outfiles.format(t=args.type, s=s) for s in range(len(shards))]
