@@ -337,8 +337,8 @@ def events_to_compound(tokens, debug=False):
     return out
 
 
-def events_to_midi(tokens, debug=False):
-    return compound_to_midi(events_to_compound(tokens, debug=debug), debug=debug)
+def events_to_midi(tokens, vocab, debug=False):
+    return compound_to_midi(events_to_compound(tokens, debug=debug), vocab, debug=debug)
 
 def midi_to_events(midifile, debug=False):
     return compound_to_events(midi_to_compound(midifile, debug=debug))
