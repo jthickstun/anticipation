@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 from anticipation.config import EVENT_SIZE
 
-def log_loss(model, datafile, subsample):
+def log_loss_trip(model, datafile, subsample):
     with open(datafile, 'r') as data:
         ce = torch.empty(0)
         for i,line in tqdm(list(enumerate(data))):
@@ -23,7 +23,38 @@ def log_loss(model, datafile, subsample):
                 logits = model(tokens).logits[0]
                 ce = torch.cat([ce, F.cross_entropy(logits[:-1],tokens[0,1:],reduction='none').cpu()])
 
-    return ce
+    res = {}
+    res['loss'] = np.round(ce.mean().item(), 3)
+    res['event_ppl'] = np.round(np.exp(3*ce.mean().item()), 3)
+    res['onset_ppl'] = np.round(np.exp(ce[0::3].mean().item()), 3)
+    res['dur_ppl'] = np.round(np.exp(ce[1::3].mean().item()), 3)
+    res['note_ppl'] = np.round(np.exp((ce[2::3]).mean().item()), 3)
+
+    return res
+
+def log_loss_quad(model, datafile, subsample):
+    with open(datafile, 'r') as data:
+        ce = torch.empty(0)
+        for i,line in tqdm(list(enumerate(data))):
+            if i % subsample != 0:
+                continue
+
+            tokens = [int(token) for token in line.split()]
+            tokens = torch.tensor(tokens).unsqueeze(0).cuda()
+            with torch.no_grad():
+                logits = model(tokens).logits[0]
+                ce = torch.cat([ce, F.cross_entropy(logits[3:-1],tokens[0,4:],reduction='none').cpu()])
+
+    res = {}
+    res['loss'] = np.round(ce.mean().item(), 3)
+    res['event_ppl'] = np.round(np.exp(4*ce.mean().item()), 3)
+    res['onset_ppl'] = np.round(np.exp(ce[0::4].mean().item()), 3)
+    res['pitch_ppl'] = np.round(np.exp(ce[1::4].mean().item()), 3)
+    res['instr_ppl'] = np.round(np.exp(ce[2::4].mean().item()), 3)
+    res['note_ppl'] = np.round(np.exp((ce[1::4]+ce[2::4]).mean().item()), 3)
+    res['dur_ppl'] = np.round(np.exp(ce[3::4].mean().item()), 3)
+
+    return res
 
 
 def main(args):
@@ -49,10 +80,15 @@ def main(args):
     print('  ', args.filename)
     with open(results, 'w', newline='') as f:
         fields = ['step', 'loss']
-        if args.bpe:
-            fields.append('bpe')
-        if not args.interarrival:
-            fields.extend(['event_ppl', 'onset_ppl', 'dur_ppl', 'note_ppl'])
+        
+        if args.type == 'trip':
+           fields.extend(['event_ppl', 'onset_ppl', 'dur_ppl', 'note_ppl'])
+           log_loss = log_loss_trip
+        elif args.type == 'quad':
+           fields.extend(['event_ppl', 'onset_ppl', 'pitch_ppl', 'instr_ppl', 'note_ppl', 'dur_ppl'])
+           log_loss = log_loss_quad
+        else:
+            raise ValueError('Vocab type should be in ["trip", "quad"]')
 
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
@@ -64,21 +100,8 @@ def main(args):
             model = AutoModelForCausalLM.from_pretrained(ckpt).cuda()
             print(f'  loaded in {time.time()-t0} seconds')
 
-            ce = log_loss(model, args.filename, args.subsample)
-
-            res = {}
+            res = log_loss(model, args.filename, args.subsample)
             res['step'] = step
-            res['loss'] = np.round(ce.mean().item(), 3)
-            if args.bpe:
-                # hardcoding length of the LakhMidi test set in hours: 560.98
-                assert os.path.basename(args.filename) == 'test.txt'
-                res['bpe'] = args.subsample*ce.mean().item()*np.log2(np.e)*(len(ce) / (560.98*3600))
-            if not args.interarrival:
-                res['event_ppl'] = np.round(np.exp(EVENT_SIZE*ce.mean().item()), 3)
-                res['onset_ppl'] = np.round(np.exp(ce[0::3].mean().item()), 3)
-                res['dur_ppl'] = np.round(np.exp(ce[1::3].mean().item()), 3)
-                res['note_ppl'] = np.round(np.exp(ce[2::3].mean().item()), 3)
-
             writer.writerow(res)
 
 
@@ -90,11 +113,9 @@ if __name__ == '__main__':
     parser.add_argument('-v', '--verbose', action='store_true', help='verbose console output')
     parser.add_argument('-a', '--all', action='store_true',
             help='calculate loss for all checkpoints')
-    parser.add_argument('--bpe', action='store_true',
-            help='calculate loss for all checkpoints')
-    parser.add_argument('-i', '--interarrival', action='store_true',
-            help='request interarrival-time enocoding (default to arrival-time encoding)')
     parser.add_argument('-s', '--subsample', type=int, default=10,
             help='dataset subsampling ratio')
+    parser.add_argument('--type', default='quad',
+        help='type of vocabulary {trip|quad}')
 
     main(parser.parse_args())
