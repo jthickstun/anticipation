@@ -24,8 +24,8 @@ def mm_to_compound(blocks, vocab, debug=False):
     out = 5*(len(tokens)//4)*[None]
     out[0::5] = [tok - time_offset for tok in tokens[0::4]]
     out[1::5] = [tok - dur_offset for tok in tokens[3::4]]
-    out[2::5] = [tok - pitch_offset for tok in tokens[1::4]]
-    out[3::5] = [tok - instr_offset for tok in tokens[2::4]]
+    out[2::5] = [tok - pitch_offset for tok in tokens[2::4]]
+    out[3::5] = [tok - instr_offset for tok in tokens[1::4]]
     out[4::5] = (len(tokens)//4)*[72] # default velocity
 
     # convert interarrival times to arrival times
