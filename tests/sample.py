@@ -7,7 +7,11 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from anticipation.mmvocab import vocab 
 
 
-def safe_logits(logits, idx):
+def safe_nop(logits, idx):
+    return logits
+
+
+def safe_audio(logits, idx):
     fps = vocab['config']['audio_fps']
     codebook_size = vocab['config']['codebook_size']
     residuals = vocab['config']['residuals']
@@ -27,7 +31,7 @@ def safe_logits(logits, idx):
     return logits
 
 
-def generate(model, input_ids, tokens):
+def generate(model, input_ids, tokens, safe_logits=safe_nop):
     # initialize the past_key_values tensor to None
     past_key_values = None
 
@@ -70,6 +74,7 @@ def main(args, vocab):
     if args.content == 'old':
         # old triplet format
         input_ids = torch.tensor([55026]).to(device)
+        safe_logits = safe_nop
     elif args.content == 'audio':
         sep = vocab['separator']
         task = vocab['task']['audiogen']
@@ -77,16 +82,18 @@ def main(args, vocab):
         pad = vocab['control_pad']
         #input_ids = torch.tensor([task, content, pad, pad, sep, sep, sep, sep]).to(device)
         input_ids = torch.tensor([task, content, pad, pad]).to(device)
+        safe_logits = safe_audio
     else:
         sep = vocab['separator']
         task = vocab['task']['midigen']
         content = vocab['content_type']['clean_midi']
         pad = vocab['control_pad']
         input_ids = torch.tensor([task, content, pad, pad, sep, sep, sep, sep]).to(device)
+        safe_logits = safe_nop
 
     with open(args.output, 'w') as f:
         for i in range(args.sequences):
-            output = generate(model, input_ids, args.tokens - len(input_ids))[0]
+            output = generate(model, input_ids, args.tokens - len(input_ids), safe_logits)[0]
             f.write(' '.join([str(tok) for tok in output]) + '\n')
 
 
