@@ -49,8 +49,8 @@ def log_loss_quad(model, datafile, subsample):
     res['loss'] = np.round(ce.mean().item(), 3)
     res['event_ppl'] = np.round(np.exp(4*ce.mean().item()), 3)
     res['onset_ppl'] = np.round(np.exp(ce[0::4].mean().item()), 3)
-    res['pitch_ppl'] = np.round(np.exp(ce[1::4].mean().item()), 3)
-    res['instr_ppl'] = np.round(np.exp(ce[2::4].mean().item()), 3)
+    res['instr_ppl'] = np.round(np.exp(ce[1::4].mean().item()), 3)
+    res['pitch_ppl'] = np.round(np.exp(ce[2::4].mean().item()), 3)
     res['note_ppl'] = np.round(np.exp((ce[1::4]+ce[2::4]).mean().item()), 3)
     res['dur_ppl'] = np.round(np.exp(ce[3::4].mean().item()), 3)
 
@@ -85,7 +85,7 @@ def main(args):
            fields.extend(['event_ppl', 'onset_ppl', 'dur_ppl', 'note_ppl'])
            log_loss = log_loss_trip
         elif args.type == 'quad':
-           fields.extend(['event_ppl', 'onset_ppl', 'pitch_ppl', 'instr_ppl', 'note_ppl', 'dur_ppl'])
+           fields.extend(['event_ppl', 'onset_ppl', 'instr_ppl', 'pitch_ppl', 'note_ppl', 'dur_ppl'])
            log_loss = log_loss_quad
         else:
             raise ValueError('Vocab type should be in ["trip", "quad"]')
