@@ -1,6 +1,50 @@
 from argparse import ArgumentParser
 
-from anticipation.ops import print_tokens
+from anticipation.mmvocab import vocab
+
+def print_tokens(tokens):
+    midi_offset = vocab['midi_offset']
+    time_offset = vocab['time_offset']
+    pitch_offset = vocab['pitch_offset']
+    instr_offset = vocab['instrument_offset']
+    dur_offset = vocab['duration_offset']
+
+    fps = vocab['config']['audio_fps']
+    res = vocab['config']['midi_quantization']
+
+    separator = vocab['separator']
+    rest = vocab['rest']
+    print('---------------------')
+    audio_frame = 0
+    midi_arrival = midi_time = 0
+    for j, (tm, instr, pitch, dur) in enumerate(zip(tokens[0::4],tokens[1::4],tokens[2::4],tokens[3::4])):
+        annotation = ''
+        audio_time = round(float(audio_frame)/fps,3)
+
+        if tm == separator:
+            assert instr == separator and pitch == separator and dur == separator 
+            print(j, midi_time, audio_time, '|', 'SEPARATOR')
+            audio_time = 0
+            midi_arrival = 0
+            continue
+
+        if tm < midi_offset:
+            print(j, midi_time, audio_time, '|', 'AUDIO')
+            audio_frame += 1
+            continue
+
+        if instr == rest:
+            annotation += ' (REST)'
+
+        tm = tm - time_offset
+        instr = instr - instr_offset
+        pitch = pitch - pitch_offset
+        dur = dur - dur_offset
+
+        midi_arrival += tm
+        midi_time = round(float(midi_arrival)/res,3)
+
+        print(j, midi_time, audio_time, '|', tm, dur, instr, pitch, annotation)
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='inspect a MIDI dataset')
@@ -16,8 +60,8 @@ if __name__ == '__main__':
                 continue 
 
             tokens = [int(token) for token in line.split()]
-            control = tokens[:1]
-            tokens = tokens[1:]
+            control = tokens[:4]
+            tokens = tokens[4:]
             print('Control tokens:', control)
             print_tokens(tokens)
             break
