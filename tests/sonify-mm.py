@@ -8,7 +8,22 @@ import torch, torchaudio
 from anticipation import audio
 from anticipation.convert import compound_to_midi
 
-from encodec.model import EncodecModel
+from transformers import EncodecModel as EncodecModel32k
+
+
+SAMPLE_RATE = 32000
+
+
+def detokenize(blocks, vocab):
+    residuals = vocab['config']['residuals']
+    offsets = torch.tensor(vocab['residual_offset'])[:,None]
+    assert residuals > 0
+
+    # remove offsets for the residual vocabularies
+    for i in range(residuals):
+        blocks[i] = blocks[i] - offsets[i]
+
+    return blocks.view(1,1,4,-1)
 
 
 def mm_to_compound(blocks, vocab, debug=False):
@@ -84,12 +99,16 @@ if __name__ == '__main__':
     else:
         raise ValueError(f'Invalid vocabulary type "{args.vocab}"')
 
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+
     separator = vocab['separator']
-    scale_offset = vocab['scale_offset']
-    scale_res = vocab['config']['scale_resolution']
+    pad = vocab['residual_pad']
     skew = vocab['config']['skew']
-    print(separator, scale_offset, scale_res, skew)
-    model = EncodecModel.encodec_model_48khz()
+    print(device, separator, skew)
+    model = EncodecModel32k.from_pretrained("facebook/encodec_32khz").to(device)
     with open(args.filename, 'r') as f:
         for i, line in enumerate(f):
             if i < args.index:
@@ -111,6 +130,9 @@ if __name__ == '__main__':
             else:
                 blocks = torch.tensor(tokens).reshape(-1, 4).T
 
+            # strip residual pads?
+            #tokens = [token for token in tokens if token != pad]
+
             if args.vocab == 'mm':
                 blocks, midi_blocks = split(blocks, vocab, args.debug)
                 if midi_blocks.shape[1] > 0:
@@ -120,21 +142,10 @@ if __name__ == '__main__':
             if blocks.shape[1] == 0:
                 continue
 
-            # seek for the first complete frame
-            for seek, block in enumerate(blocks.T):
-                if scale_offset <= block[0] < scale_offset + scale_res:
-                    break
+            audio_codes = detokenize(blocks, vocab).to(device)
+            print(audio_codes.shape, audio_codes.min(), audio_codes.max())
+            with torch.no_grad():
+                wav = model.decode(audio_codes, [None]).audio_values.cpu()[0]
+                print(wav.shape)
+            torchaudio.save(f'output/{Path(args.filename).stem}-{i}.wav', wav, SAMPLE_RATE)
 
-            print('Seek to:', seek)
-
-            blocks = blocks[:,seek:]
-            if blocks.shape[1] > 0:
-                frames, scales = audio.detokenize(blocks, vocab)
-                print(scales)
-                print(frames[-1].shape)
-                if frames[-1].shape[2] == 1:
-                    frames = frames[:-1]
-                    scales = scales[:-1]
-                with torch.no_grad():
-                    wav = model.decode(zip(frames, [torch.tensor(s/100.).view(1) for s in scales]))[0]
-                torchaudio.save(f'output/{Path(args.filename).stem}-{i}.wav', wav, model.sample_rate)

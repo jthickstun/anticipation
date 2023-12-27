@@ -13,6 +13,24 @@ from anticipation.audio import tokenize as tokenize_audio
 from anticipation.tokenize import maybe_tokenize
 
 
+add_offset = True
+
+
+def cache_to_tokens(ecdc, vocab):
+    #cache = f'{ecdc}.cache.txt'
+    cache = ecdc.replace('.ecdc', '.50hz.cache')
+    with open(cache, 'r') as f:
+        tokens = [int(token) for token in f.read().split()]
+
+    if add_offset:
+        residuals = vocab['config']['residuals']
+        offset = vocab['residual_offset']
+        for i in range(residuals):
+            tokens[i::residuals] = [token + offset[i] for token in tokens[i::residuals]]
+
+    return tokens
+
+
 def compound_to_mm(tokens, vocab, stats=False):
     assert len(tokens) % 5 == 0
 
@@ -135,14 +153,13 @@ def fast_anticipate(audio, midi, delta):
 def prepare_mm(ecdc, vocab, anticipation):
     separator = vocab['separator']
 
-    with open(f'{ecdc}.cache.txt', 'r') as f:
-        cached_tokens = [int(token) for token in f.read().split()]
+    audio_tokens = cache_to_tokens(ecdc, vocab)
 
     midifile = ecdc.replace('.ecdc','.ismir2022_base.mid.compound.txt')
     with open(midifile, 'r') as f:
         compound_tokens = [int(token) for token in f.read().split()]
 
-    audio_blocks = torch.tensor(cached_tokens).reshape(-1, 4).T
+    audio_blocks = torch.tensor(audio_tokens).reshape(-1, 4).T
     midi_blocks = compound_to_mm(compound_tokens, vocab)
 
     blocks = fast_anticipate(audio_blocks, midi_blocks, anticipation)
@@ -158,14 +175,10 @@ def prepare_mm(ecdc, vocab, anticipation):
 def prepare_audio(ecdc, vocab):
     separator = vocab['separator']
 
-    #audio_length, frames, scales = read_ecdc(Path(ecdc), model)
-    #blocks = tokenize_audio(frames, scales, vocab)
-
-    with open(f'{ecdc}.cache.txt', 'r') as f:
-        tokens = [int(token) for token in f.read().split()]
+    audio_tokens = cache_to_tokens(ecdc, vocab)
 
     if vocab['config']['skew']:
-        blocks = torch.tensor(tokens).reshape(-1, 4).T
+        blocks = torch.tensor(audio_tokens).reshape(-1, 4).T
         tokens = skew(blocks, 4, pad=vocab['residual_pad'])
 
     tokens[0:0] = 4*[separator]
@@ -290,6 +303,7 @@ def main(args):
     print(f"  context = {args.context}")
     print(f"  anticipation interval = {vocab['config']['anticipation']} seconds")
     print(f"  skew = {vocab['config']['skew']}")
+    print(f"  add residual offest? {add_offset}") 
 
     if 'midigen' in args.type:
         files = glob(os.path.join(args.datadir, '**/*.compound.txt'), recursive=True)

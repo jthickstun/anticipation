@@ -9,8 +9,9 @@ The vocabulary used for multimodal encoding.
 DELTA = 3                                # seconds of anticipation
 
 # Encodec
-FRAMES_PER_SECOND = 50                   # 50 audio frames per second
-CODEBOOK_SIZE = 2048
+FRAMES_PER_SECOND = 150 + 1              # 1 scale frame +  150 audio frames
+CODEBOOK_SIZE = 1024
+SCALE_QUANTIZATION = 100
 RESIDUALS = 4
 
 # MIDI
@@ -44,13 +45,15 @@ TRANSMIDI = CONTROL_OFFSET + 8
 
 # the audio block
 AUDIO_OFFSET = CONTROL_OFFSET+9
-R0_OFFSET = AUDIO_OFFSET
+SCALE_PAD = AUDIO_OFFSET + 0
+R0_OFFSET = AUDIO_OFFSET + 1
 R1_OFFSET = R0_OFFSET + CODEBOOK_SIZE
 R2_OFFSET = R1_OFFSET + CODEBOOK_SIZE
 R3_OFFSET = R2_OFFSET + CODEBOOK_SIZE
+SCALE_OFFSET = R3_OFFSET + CODEBOOK_SIZE
 
 # the midi block
-MIDI_OFFSET = R3_OFFSET + CODEBOOK_SIZE
+MIDI_OFFSET = SCALE_OFFSET + SCALE_QUANTIZATION
 TIME_OFFSET = MIDI_OFFSET
 PITCH_OFFSET = TIME_OFFSET + MAX_INTERARRIVAL + 1
 REST = PITCH_OFFSET + MAX_PITCH
@@ -61,10 +64,11 @@ VOCAB_SIZE = DURATION_OFFSET + MAX_DURATION
 
 vocab = {
     'config' : {
-        'skew' : True,
+        'skew' : False,
         'anticipation' : DELTA,
         'midi_quantization' : MIDI_QUANTIZATION,
         'audio_fps' : FRAMES_PER_SECOND,
+        'scale_resolution' : SCALE_QUANTIZATION,
         'residuals' : RESIDUALS,
         'codebook_size' : CODEBOOK_SIZE,
         'max_interarrival' : MAX_INTERARRIVAL,
@@ -74,6 +78,7 @@ vocab = {
 
     'separator' : SEPARATOR,
     'residual_pad' : RESIDUAL_PAD,
+    'scale_pad' : SCALE_PAD,
     'rest' : REST,
     'control_pad' : CONTROL_PAD,
 
@@ -93,6 +98,7 @@ vocab = {
 
     'audio_offset' : AUDIO_OFFSET,
     'residual_offset' : [R0_OFFSET, R1_OFFSET, R2_OFFSET, R3_OFFSET],
+    'scale_offset' : SCALE_OFFSET,
     'midi_offset' : MIDI_OFFSET,
     'time_offset' : TIME_OFFSET,
     'pitch_offset' : PITCH_OFFSET,
@@ -104,6 +110,7 @@ vocab = {
 if __name__ == '__main__':
     print('Multimodal Vocabulary Configuration:')
     print('  -> Audio Frames Per Second:', FRAMES_PER_SECOND)
+    print('  -> Scale Quantization:', SCALE_QUANTIZATION)
     print('  -> Number of Residuals:', RESIDUALS)
     print('  -> Codebook Size:', CODEBOOK_SIZE)
     print('  -> Midi Quantization:', MIDI_QUANTIZATION)
@@ -127,10 +134,12 @@ if __name__ == '__main__':
     print('    * synthesized audio :', SYNTHAUDIO)
     print('    * transcribed midi :', TRANSMIDI)
     print('Audio Block:', AUDIO_OFFSET)
+    print('  * scale pad :', SCALE_PAD)
     print('  -> r0 offset:', R0_OFFSET)
     print('  -> r1 offset:', R1_OFFSET)
     print('  -> r2 offset:', R2_OFFSET)
     print('  -> r3 offset:', R3_OFFSET)
+    print('  -> scale offset:', SCALE_OFFSET)
     print('Midi Block:', MIDI_OFFSET)
     print('  -> interarrival time offset :', TIME_OFFSET)
     print('  -> pitch offset :', PITCH_OFFSET)
