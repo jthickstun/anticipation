@@ -311,7 +311,6 @@ preproc_func = {
 
 
 def main(args):
-    vocab['config']['skew'] = False
     print('Tokenizing a multimodal dataset at:', args.datadir)
     print('Tokenization parameters:')
     print(f"  type = {args.type}")
