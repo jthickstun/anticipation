@@ -64,7 +64,7 @@ VOCAB_SIZE = DURATION_OFFSET + MAX_DURATION
 
 vocab = {
     'config' : {
-        'skew' : False,
+        'skew' : True,
         'anticipation' : DELTA,
         'midi_quantization' : MIDI_QUANTIZATION,
         'audio_fps' : FRAMES_PER_SECOND,
