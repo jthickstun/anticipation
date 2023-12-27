@@ -108,12 +108,11 @@ def anticipate(audio, midi, delta):
     time_ratio = audio_fps / float(midi_quantization)
     max_pos = len(audio)
     blocks = torch.empty(audio.shape[0]+midi.shape[1], audio.shape[1], dtype=audio.dtype)
-    for midi_block in midi.T:
+    for i, midi_block in enumerate(midi.T):
         time += midi_block[0] - time_offset
-
-        seqtime = math.floor(time*time_ratio) 
-        seqpos = max(seqtime, 0)      # events in first delta interval go at the start
-        seqpos = min(seqpos, max_pos) # events after the sequence go at the end
+        seqtime = math.ceil(time*time_ratio)
+        seqpos = max(seqtime, 0)           # events in first delta interval go at the start
+        seqpos = min(seqpos, max_pos)      # events after the sequence go at the end
 
         blocks[audio_idx+offset:seqpos+offset] = audio[audio_idx:seqpos]
         blocks[seqpos+offset] = midi_block
@@ -272,6 +271,7 @@ preproc_func = {
 
 
 def main(args):
+    vocab['config']['skew'] = False
     print('Tokenizing a multimodal dataset at:', args.datadir)
     print('Tokenization parameters:')
     print(f"  type = {args.type}")
