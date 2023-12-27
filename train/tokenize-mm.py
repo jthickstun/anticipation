@@ -101,31 +101,6 @@ def anticipate(audio, midi, delta):
     audio_fps = vocab['config']['audio_fps']
     midi_quantization = vocab['config']['midi_quantization']
     time_offset = vocab['time_offset']
-    blocks = audio.clone().T
-
-    offset = 0
-    time = delta*midi_quantization
-    time_ratio = audio_fps / float(midi_quantization)
-    for block in midi.T:
-        time += block[0] - time_offset
-
-        seqtime = math.floor(time*time_ratio) 
-        seqpos = max(seqtime, 0) # events in first delta interval go at the start
-        seqpos = min(seqpos, len(blocks)) # events after the sequence go at the end
-
-        blocks = torch.cat((blocks[:seqpos+offset], block.unsqueeze(0), blocks[seqpos+offset:]), dim=0)
-        offset += 1
-
-    return blocks.T
-
-
-def fast_anticipate(audio, midi, delta):
-    if len(midi) == 0:
-        return audio 
-
-    audio_fps = vocab['config']['audio_fps']
-    midi_quantization = vocab['config']['midi_quantization']
-    time_offset = vocab['time_offset']
     audio = audio.clone().T
 
     audio_idx = offset = 0
@@ -162,7 +137,7 @@ def prepare_mm(ecdc, vocab, anticipation):
     audio_blocks = torch.tensor(audio_tokens).reshape(-1, 4).T
     midi_blocks = compound_to_mm(compound_tokens, vocab)
 
-    blocks = fast_anticipate(audio_blocks, midi_blocks, anticipation)
+    blocks = anticipate(audio_blocks, midi_blocks, anticipation)
     if vocab['config']['skew']:
         tokens = skew(blocks, 4, pad=vocab['residual_pad'])
     else:
