@@ -15,22 +15,22 @@ def print_tokens(tokens):
     separator = vocab['separator']
     rest = vocab['rest']
     print('---------------------')
-    audio_frame = 0
+    audio_frame = audio_time = 0
     midi_arrival = midi_time = 0
     for j, (tm, instr, pitch, dur) in enumerate(zip(tokens[0::4],tokens[1::4],tokens[2::4],tokens[3::4])):
         annotation = ''
-        audio_time = round(float(audio_frame)/fps,3)
 
         if tm == separator:
             assert instr == separator and pitch == separator and dur == separator 
-            print(j, midi_time, audio_time, '|', 'SEPARATOR')
             audio_time = 0
             midi_arrival = 0
+            print(j, midi_time, audio_time, '|', 'SEPARATOR')
             continue
 
         if tm < midi_offset:
-            print(j, midi_time, audio_time, '|', 'AUDIO')
             audio_frame += 1
+            audio_time = round(float(audio_frame)/fps,3)
+            print(j, midi_time, audio_time, '|', 'AUDIO')
             continue
 
         if instr == rest:

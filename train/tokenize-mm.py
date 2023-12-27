@@ -94,9 +94,10 @@ def compound_to_mm(tokens, vocab, stats=False):
     return mm_tokens
 
 
-def anticipate(audio, midi, delta):
+def anticipate_midi(audio, midi, delta):
+    assert delta > 0
     if len(midi) == 0:
-        return audio 
+        return audio
 
     audio_fps = vocab['config']['audio_fps']
     midi_quantization = vocab['config']['midi_quantization']
@@ -104,7 +105,7 @@ def anticipate(audio, midi, delta):
     audio = audio.clone().T
 
     audio_idx = offset = 0
-    time = delta*midi_quantization
+    time = -delta*midi_quantization
     time_ratio = audio_fps / float(midi_quantization)
     max_pos = len(audio)
     blocks = torch.empty(audio.shape[0]+midi.shape[1], audio.shape[1], dtype=audio.dtype)
@@ -124,7 +125,39 @@ def anticipate(audio, midi, delta):
     return blocks.T
 
 
-def prepare_mm(ecdc, vocab, anticipation):
+def anticipate_audio(audio, midi, delta):
+    assert delta > 0
+    if len(midi) == 0:
+        return audio 
+
+    audio_fps = vocab['config']['audio_fps']
+    midi_quantization = vocab['config']['midi_quantization']
+    time_offset = vocab['time_offset']
+    audio = audio.clone().T
+
+    audio_idx = offset = 0
+    time = delta*midi_quantization
+    time_ratio = audio_fps / float(midi_quantization)
+    max_pos = len(audio)
+    blocks = torch.empty(audio.shape[0]+midi.shape[1], audio.shape[1], dtype=audio.dtype)
+    for i, midi_block in enumerate(midi.T):
+        seqtime = math.ceil(time*time_ratio)
+        seqpos = max(seqtime, 0)           # events in first delta interval go at the start
+        seqpos = min(seqpos, max_pos)      # events after the sequence go at the end
+
+        blocks[audio_idx+offset:seqpos+offset] = audio[audio_idx:seqpos]
+        blocks[seqpos+offset] = midi_block
+        audio_idx = seqpos
+        offset += 1
+
+        time += midi_block[0] - time_offset
+
+    blocks[audio_idx+offset:] = audio[audio_idx:]
+
+    return blocks.T
+
+
+def prepare_mm(ecdc, vocab, task):
     separator = vocab['separator']
 
     audio_tokens = cache_to_tokens(ecdc, vocab)
@@ -136,7 +169,14 @@ def prepare_mm(ecdc, vocab, anticipation):
     audio_blocks = torch.tensor(audio_tokens).reshape(-1, 4).T
     midi_blocks = compound_to_mm(compound_tokens, vocab)
 
-    blocks = anticipate(audio_blocks, midi_blocks, anticipation)
+    anticipation = vocab['config']['anticipation']
+    if task == vocab['task']['synthesize']:
+        blocks = anticipate_midi(audio_blocks, midi_blocks, anticipation)
+    elif task == vocab['task']['transcribe']:
+        blocks = anticipate_audio(audio_blocks, midi_blocks, anticipation)
+    else:
+        assert False
+
     if vocab['config']['skew']:
         tokens = skew(blocks, 4, pad=vocab['residual_pad'])
     else:
@@ -210,7 +250,7 @@ def preprocess_transcribe(ecdcs, output, seqlen, idx):
     z = [task, output_content, input_content, control_pad]
 
     anticipation = vocab['config']['anticipation']
-    prepare = lambda ecdc: prepare_mm(ecdc, vocab, anticipation)
+    prepare = lambda ecdc: prepare_mm(ecdc, vocab, task)
 
     return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=seqlen)
 
@@ -223,7 +263,7 @@ def preprocess_synthesize(ecdcs, output, seqlen, idx):
     z = [task, output_content, input_content, control_pad]
 
     anticipation = vocab['config']['anticipation']
-    prepare = lambda ecdc: prepare_mm(ecdc, vocab, -anticipation)
+    prepare = lambda ecdc: prepare_mm(ecdc, vocab, task)
 
     return pack_tokens(ecdcs, output, idx, z, prepare, seqlen=seqlen)
 
