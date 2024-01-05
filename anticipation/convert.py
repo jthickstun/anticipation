@@ -337,8 +337,66 @@ def events_to_compound(tokens, debug=False):
     return out
 
 
+def compound_to_mm(tokens, vocab, stats=False):
+    assert len(tokens) % 5 == 0
+    tokens = tokens.copy()
+
+    time_offset = vocab['time_offset']
+    pitch_offset = vocab['pitch_offset']
+    instr_offset = vocab['instrument_offset']
+    dur_offset = vocab['duration_offset']
+
+    time_res = vocab['config']['midi_quantization']
+    max_duration = vocab['config']['max_duration']
+    max_interarrival = vocab['config']['max_interarrival']
+
+    rest = [time_offset+max_interarrival, vocab['rest'], vocab['rest'], dur_offset+max_interarrival]
+
+    # remove velocities
+    del tokens[4::5]
+
+    mm_tokens = [None] * len(tokens)
+
+    # sanity check and offset
+    assert all(-1 <= tok < 2**7 for tok in tokens[2::4])
+    assert all(-1 <= tok < 129 for tok in tokens[3::4])
+    mm_tokens[1::4] = [instr_offset + tok for tok in tokens[3::4]]
+    mm_tokens[2::4] = [pitch_offset + tok for tok in tokens[2::4]]
+
+    # max duration cutoff and set unknown durations to 250ms
+    truncations = sum([1 for tok in tokens[1::4] if tok >= max_duration])
+    mm_tokens[3::4] = [dur_offset + time_res//4 if tok == -1 else dur_offset + min(tok, max_duration-1)
+                       for tok in tokens[1::4]]
+
+    # convert to interarrival times
+    assert min(tokens[0::4]) >= 0
+    offset = 0
+    for idx in range(len(tokens) // 4):
+        if idx == 0:
+            previous_time = 0
+
+        time = tokens[4*idx]
+        ia = time - previous_time
+        while ia > max_interarrival:
+            # insert a rest
+            mm_tokens[4*(idx+offset):4*(idx+offset)] = rest.copy()
+            ia -= max_interarrival
+            offset += 1
+
+        mm_tokens[4*(idx+offset)] = time_offset + ia
+        previous_time = time
+
+    if stats:
+        return mm_tokens, truncations
+
+    return mm_tokens
+
+
 def events_to_midi(tokens, vocab, debug=False):
     return compound_to_midi(events_to_compound(tokens, debug=debug), vocab, debug=debug)
 
 def midi_to_events(midifile, debug=False):
     return compound_to_events(midi_to_compound(midifile, debug=debug))
+
+def midi_to_mm(midifile, vocab, debug=False):
+    return compound_to_mm(midi_to_compound(midifile, vocab, debug=debug), vocab)

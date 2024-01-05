@@ -73,7 +73,6 @@ def split(blocks, vocab, debug=False):
                 print('MIDI event at sequence position', i)
                 print('  MIDI sequence interrarival time is', )
 
-
             midi = torch.cat((midi, block.unsqueeze(1)), dim=1)
 
     return audio, midi 
@@ -99,10 +98,7 @@ if __name__ == '__main__':
     else:
         raise ValueError(f'Invalid vocabulary type "{args.vocab}"')
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-    else:
-        device = torch.device("cpu")
+    device = torch.device("cpu")
 
     separator = vocab['separator']
     pad = vocab['residual_pad']
@@ -143,7 +139,6 @@ if __name__ == '__main__':
                 continue
 
             audio_codes = detokenize(blocks, vocab).to(device)
-            print(audio_codes.shape, audio_codes.min(), audio_codes.max())
             with torch.no_grad():
                 wav = model.decode(audio_codes, [None]).audio_values.cpu()[0]
                 print(wav.shape)
