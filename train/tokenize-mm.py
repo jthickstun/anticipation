@@ -1,4 +1,4 @@
-import os, math
+import os, math, traceback
 from argparse import ArgumentParser
 from multiprocessing import Pool, RLock
 from glob import glob
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import torch
 
-from anticipation.mmvocab import vocab
+from anticipation.vocabs.mmvocab import vocab
 from anticipation.audio import read_ecdc, skew
 from anticipation.audio import tokenize as tokenize_audio
 from anticipation.tokenize import maybe_tokenize
@@ -226,6 +226,7 @@ def pack_tokens(ecdcs, output, idx, z, prepare, seqlen):
                 files += 1
             except Exception as e:
                 #print(e)
+                #print(traceback.format_exc())
                 bad_files += 1
                 continue
 

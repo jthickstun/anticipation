@@ -1,14 +1,8 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
-from anticipation.vocab import AUTOREGRESS, ANTICIPATE
-from anticipation.convert import events_to_midi, interarrival_to_midi
-
-vocab = {
-    'config': {
-        'midi_quantization': 100,
-    }
-}
+from anticipation.vocabs.tripletmidi import vocab
+from anticipation.convert import events_to_midi
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='auditory check for a tokenized dataset')
@@ -33,4 +27,3 @@ if __name__ == '__main__':
             mid = events_to_midi(tokens, vocab)
 
             mid.save(f'output/{Path(args.filename).stem}{i}.mid')
-            print(f'{i} Tokenized MIDI Length: {mid.length} seconds ({len(tokens)} tokens)')
