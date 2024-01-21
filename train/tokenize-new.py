@@ -74,6 +74,8 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
 
             #
             # TODO: anticipation happens here (extract control tokens)
+            #   * extract the chord sequence to anticipate
+            #   * extract the (randomly selected) "human" sequence to anti-anticipate
             #
 
             # get the global control tokens for this sequence
@@ -83,6 +85,12 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             # add rest tokens to events after extracting control tokens
             # (see Section 3.2 of the paper for why we do this)
             events = ops.pad(events, end_time)
+
+            #
+            # TODO: interleave the events and anticipated controls
+            #    * something like this: tokens, controls = ops.anticipate(events, controls)
+            #    * might need some care about how to anti-anticipate
+            #
 
             # write out full contexts to file
             concatenated_tokens.extend(z_start + events)
