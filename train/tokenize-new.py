@@ -19,11 +19,41 @@ def prepare_triplet_midi(midifile, vocab):
     return events
 
 
-def pack_tokens(sequences, output, idx, z, sep, prepare, seqlen):
+def control_prefix(sequence, task, vocab):
+    task = vocab['task'][task]
+    instr_offset = vocab['instrument_offset']
+    separator = vocab['separator']
+    pad = vocab['pad']
+
+    # get the list of instruments to condition on
+    # by convention, let's provide the list sorted by instrunment code
+    instruments = sorted(ops.get_instruments(sequence).keys())
+    instr_controls = [instr_offset + instr for instr in instruments]
+
+    # put task last, so the model knows it's time to generate events once it's seen the task token
+    z_start = [separator] + instr_controls + [task]
+    z_cont = instr_controls + [task]
+
+    # pad the start controls out to an offset of 0 (mod 3)
+    if len(z_start) % 3 > 0:
+        z_start[1:1] = (3-len(z_start)%3)*[pad]
+
+    # pad the continuation controls out to an offset of 1 (mod 3)
+    if len(z_cont) % 3 > 0:
+        z_cont[0:0] = (3-len(z_cont)%3)*[pad]
+    z_cont = [pad] + z_cont
+
+    return z_start, z_cont
+
+
+def pack_tokens(sequences, output, idx, pad, prepare, prefix, seqlen):
     files = bad_files = seqcount = 0
     with open(output, 'w') as outfile:
         concatenated_tokens = []
         for sequence in tqdm(sequences, desc=f'#{idx}', position=idx+1, leave=True):
+            if len(concatenated_tokens) == 0:
+                z = [pad]
+
             try:
                 events = prepare(sequence)
                 files += 1
@@ -44,8 +74,11 @@ def pack_tokens(sequences, output, idx, z, sep, prepare, seqlen):
             # (see Section 3.2 of the paper for why we do this)
             events = ops.pad(events, end_time)
 
-            # write out full sequences to file
-            concatenated_tokens.extend(sep + events)
+            # get the global control tokens for this sequence
+            z_start, z_cont = prefix(events)
+
+            # write out full contexts to file
+            concatenated_tokens.extend(z_start + events)
             while len(concatenated_tokens) >= seqlen-len(z):
                 seq = concatenated_tokens[0:seqlen-len(z)]
                 concatenated_tokens = concatenated_tokens[len(seq):]
@@ -53,24 +86,25 @@ def pack_tokens(sequences, output, idx, z, sep, prepare, seqlen):
                 # relativize time to the context 
                 try: 
                     seq = ops.translate(seq, -ops.min_time(seq, seconds=False), seconds=False)
+                    assert ops.min_time(seq, seconds=False) == 0
                 except OverflowError:
                     continue
 
                 seq = z + seq
 
                 outfile.write(' '.join([str(tok) for tok in seq]) + '\n')
+                z = z_cont # update the global control prompt (if it changed)
                 seqcount += 1
 
     return (files, bad_files, seqcount)
 
 
 def preprocess_midi(midifiles, output, seqlen, task, vocab, idx):
-    separator = vocab['separator']
-    sep = 3*[separator]
-    z = [vocab['task'][task]]
+    pad = vocab['pad']
+    prefix = lambda seq: control_prefix(seq, task, vocab)
     prepare = lambda mid: prepare_triplet_midi(mid, vocab)
 
-    return pack_tokens(midifiles, output, idx, z, sep, prepare, seqlen=seqlen)
+    return pack_tokens(midifiles, output, idx, pad, prepare, prefix, seqlen=seqlen)
 
 
 preproc_func = {

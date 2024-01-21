@@ -23,7 +23,8 @@ if __name__ == '__main__':
                 break
 
             tokens = [int(token) for token in line.split()]
-            tokens = tokens[1:] # strip control codes
-            mid = events_to_midi(tokens, vocab)
+            tokens = [tok for tok in tokens if tok < vocab['special_offset']]
+            assert(len(tokens) % 3 == 0)
 
+            mid = events_to_midi(tokens, vocab)
             mid.save(f'output/{Path(args.filename).stem}{i}.mid')

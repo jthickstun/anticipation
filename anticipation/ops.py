@@ -7,6 +7,10 @@ from collections import defaultdict
 from anticipation.config import *
 from anticipation.vocab import *
 
+#
+# TODO: need to rewrite this whole module to take a vocabulary parameter
+#
+
 
 def print_tokens(tokens):
     print('---------------------')
@@ -201,7 +205,7 @@ def min_time(tokens, seconds=True, instr=None):
     mt = None
     for time, dur, note in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         # stop calculating at sequence separator
-        if note == SEPARATOR: break
+        if time >= SEPARATOR: break
 
         if note < CONTROL_OFFSET:
             time -= TIME_OFFSET
@@ -265,7 +269,7 @@ def translate(tokens, dt, seconds=False):
     new_tokens = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         # stop translating after EOT
-        if note == SEPARATOR:
+        if time >= SEPARATOR:
             new_tokens.extend([time, dur, note])
             dt = 0
             continue
