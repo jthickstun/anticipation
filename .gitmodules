@@ -1,0 +1,3 @@
+[submodule "chorder"]
+	path = chorder
+	url = https://github.com/caenopy/chorder
