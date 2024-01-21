@@ -118,16 +118,16 @@ def generate(model, start_time, end_time, inputs=None, controls=None, top_p=1.0,
     end_time = int(TIME_RESOLUTION*end_time)
 
     # prompt is events up to start_time
-    prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False), start_time)
+    prompt = ops.pad(ops.clip(inputs, 0, start_time, clip_duration=False, seconds=False), start_time)
 
     # treat events beyond start_time as controls
-    future = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False)
+    future = ops.clip(inputs, start_time+1, ops.max_time(inputs, seconds=False), clip_duration=False, seconds=False)
     if debug:
         print('Future')
         ops.print_tokens(future)
 
     # clip controls that preceed the sequence
-    controls = ops.clip(controls, DELTA, ops.max_time(controls, seconds=False), clip_duration=False)
+    controls = ops.clip(controls, DELTA, ops.max_time(controls, seconds=False), clip_duration=False, seconds=False)
 
     if debug:
         print('Controls')
