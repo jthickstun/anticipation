@@ -95,6 +95,13 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
                     seq = ops.translate(seq, -ops.min_time(seq, seconds=False), seconds=False)
                     assert ops.min_time(seq, seconds=False) == 0
                 except OverflowError:
+                    # TODO: I'm not sure I ever actually check for overflow (max_time(seq) > 10000)
+                    #   * did I ever correctly check for this?
+                    #   * is this causing vocab overflows?
+                    #      - could be that there are overflows, but not bad enough to overflow
+                    #      the top of the vocabulary and hit the assertion max(seq) < vocab_size
+                    #      because time events are at the bottom of the vocabulary
+                    #   * follow up on this: at least check whether this codepath is ever reached
                     continue
 
                 seq = z + seq
