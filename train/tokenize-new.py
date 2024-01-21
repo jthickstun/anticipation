@@ -26,9 +26,12 @@ def control_prefix(sequence, task, vocab):
     pad = vocab['pad']
 
     # get the list of instruments to condition on
-    # by convention, let's provide the list sorted by instrunment code
+    # by convention, let's provide the list sorted by instrument code
     instruments = sorted(ops.get_instruments(sequence).keys())
     instr_controls = [instr_offset + instr for instr in instruments]
+
+    vocab_size = vocab['config']['size']
+    assert max(instr_controls) < vocab_size
 
     # put task last, so the model knows it's time to generate events once it's seen the task token
     z_start = [separator] + instr_controls + [task]
@@ -46,7 +49,10 @@ def control_prefix(sequence, task, vocab):
     return z_start, z_cont
 
 
-def pack_tokens(sequences, output, idx, pad, prepare, prefix, seqlen):
+def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
+    vocab_size = vocab['config']['size']
+    pad = vocab['pad']
+
     files = bad_files = seqcount = 0
     with open(output, 'w') as outfile:
         concatenated_tokens = []
@@ -70,12 +76,13 @@ def pack_tokens(sequences, output, idx, pad, prepare, prefix, seqlen):
             # TODO: anticipation happens here (extract control tokens)
             #
 
+            # get the global control tokens for this sequence
+            # do this before padding because some ops don't handle REST properly
+            z_start, z_cont = prefix(events)
+
             # add rest tokens to events after extracting control tokens
             # (see Section 3.2 of the paper for why we do this)
             events = ops.pad(events, end_time)
-
-            # get the global control tokens for this sequence
-            z_start, z_cont = prefix(events)
 
             # write out full contexts to file
             concatenated_tokens.extend(z_start + events)
@@ -92,6 +99,7 @@ def pack_tokens(sequences, output, idx, pad, prepare, prefix, seqlen):
 
                 seq = z + seq
 
+                assert max(seq) < vocab_size
                 outfile.write(' '.join([str(tok) for tok in seq]) + '\n')
                 z = z_cont # update the global control prompt (if it changed)
                 seqcount += 1
@@ -100,11 +108,10 @@ def pack_tokens(sequences, output, idx, pad, prepare, prefix, seqlen):
 
 
 def preprocess_midi(midifiles, output, seqlen, task, vocab, idx):
-    pad = vocab['pad']
     prefix = lambda seq: control_prefix(seq, task, vocab)
     prepare = lambda mid: prepare_triplet_midi(mid, vocab)
 
-    return pack_tokens(midifiles, output, idx, pad, prepare, prefix, seqlen=seqlen)
+    return pack_tokens(midifiles, output, idx, vocab, prepare, prefix, seqlen=seqlen)
 
 
 preproc_func = {

@@ -205,7 +205,7 @@ def min_time(tokens, seconds=True, instr=None):
     mt = None
     for time, dur, note in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         # stop calculating at sequence separator
-        if time >= SEPARATOR: break
+        if note >= SEPARATOR: break
 
         if note < CONTROL_OFFSET:
             time -= TIME_OFFSET
@@ -269,7 +269,7 @@ def translate(tokens, dt, seconds=False):
     new_tokens = []
     for (time, dur, note) in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
         # stop translating after EOT
-        if time >= SEPARATOR:
+        if note >= SEPARATOR:
             new_tokens.extend([time, dur, note])
             dt = 0
             continue
