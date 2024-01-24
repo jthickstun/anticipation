@@ -80,7 +80,7 @@ def masked_instr_logits(logits, masked_instrs):
 
     return logits
 
-def control_prefix(instruments, task, vocab):
+def control_prefix(instruments, task):
     task = vocab['task'][task]
     instr_offset = vocab['instrument_offset']
     separator = vocab['separator']
@@ -109,13 +109,13 @@ def control_prefix(instruments, task, vocab):
 
     return z_start, z_cont
 
-def add_token(model, task, tokens, instruments, top_p, temperature, current_time, masked_instrs, vocab, debug=False):
+def add_token(model, task, tokens, instruments, top_p, temperature, current_time, masked_instrs, debug=False):
     pad = vocab['pad']
 
     assert len(tokens) % 3 == 0
 
     # get control global control prefix for the beginning of a sequence and the continuation of a sequence
-    z_start, z_cont = control_prefix(instruments, task, vocab)
+    z_start, z_cont = control_prefix(instruments, task)
 
     history = tokens.copy()
     prefix = None
@@ -157,10 +157,7 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
 
     return new_token
 
-def generate(model, start_time, end_time, inputs=None, controls=None, instruments=None, top_p=1.0, temperature=1.0, masked_instrs=[], vocab='triplet-midi', debug=False, delta=DELTA*TIME_RESOLUTION):
-    
-    if vocab != 'triplet-midi':
-        raise ValueError(f'Invalid vocabulary type "{vocab}"')
+def generate(model, start_time, end_time, inputs=None, controls=None, instruments=None, top_p=1.0, temperature=1.0, masked_instrs=[], debug=False, delta=DELTA*TIME_RESOLUTION):
     
     if inputs is None:
         inputs = []
@@ -230,7 +227,7 @@ def generate(model, start_time, end_time, inputs=None, controls=None, instrument
                     # nothing more to anticipate
                     anticipated_time = math.inf
 
-            new_token = add_token(model, task, tokens, instruments, top_p, temperature, max(start_time,current_time), masked_instrs, vocab)
+            new_token = add_token(model, task, tokens, instruments, top_p, temperature, max(start_time,current_time), masked_instrs)
             new_time = new_token[0] - TIME_OFFSET
             if new_time >= end_time:
                 break
