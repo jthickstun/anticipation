@@ -6,5 +6,5 @@ setup(
    description='Anticipatory Autoregressive Models',
    author='John Thickstun',
    author_email='jthickstun@cs.stanford.edu',
-   packages=['anticipation'],
+   packages=['anticipation', 'anticipation.vocabs'],
 )
