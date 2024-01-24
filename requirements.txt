@@ -5,4 +5,4 @@ numpy == 1.22.4
 torch == 2.0.1
 transformers == 4.29.2
 tqdm == 4.65.0
-savetensors
+safetensors
