@@ -81,7 +81,8 @@ def masked_instr_logits(logits, masked_instrs):
     return logits
 
 def control_prefix(instruments, task):
-    task = vocab['task'][task]
+    task_string = 'autoregress' if task == AUTOREGRESS else 'anticipate'
+    task = vocab['task'][task_string]
     instr_offset = vocab['instrument_offset']
     separator = vocab['separator']
     pad = vocab['pad']
