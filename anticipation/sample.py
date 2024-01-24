@@ -10,7 +10,8 @@ from tqdm import tqdm
 
 from anticipation import ops
 from anticipation.config import *
-from anticipation.vocab import *
+from anticipation.vocab import * # TODO: Deprecate this
+from anticipation.vocabs.tripletmidi import vocab
 
 
 def safe_logits(logits, idx):
@@ -79,12 +80,53 @@ def masked_instr_logits(logits, masked_instrs):
 
     return logits
 
+def control_prefix(instruments, task, vocab):
+    task = vocab['task'][task]
+    instr_offset = vocab['instrument_offset']
+    separator = vocab['separator']
+    pad = vocab['pad']
 
-def add_token(model, z, tokens, top_p, temperature, current_time, masked_instrs, debug=False):
+    instr_controls = sorted(instruments)
+    instr_controls = [instr_offset + instr for instr in instr_controls]
+
+    vocab_size = vocab['config']['size']
+    assert max(instr_controls) < vocab_size
+
+    # put task last, so the model knows it's time to generate events once it's seen the task token
+    z_start = [separator] + instr_controls + [task]
+    z_cont = instr_controls + [task]
+
+    # pad the start controls out to an offset of 0 (mod 3)
+    if len(z_start) % 3 > 0:
+        z_start[1:1] = (3-len(z_start)%3)*[pad]
+
+    # pad the continuation controls out to an offset of 1 (mod 3)
+    if len(z_cont) % 3 > 0:
+        z_cont[0:0] = (3-len(z_cont)%3)*[pad]
+    z_cont = [pad] + z_cont
+
+    assert len(z_start) > len(z_cont)
+
+    return z_start, z_cont
+
+def add_token(model, task, tokens, instruments, top_p, temperature, current_time, masked_instrs, vocab, debug=False):
+    pad = vocab['pad']
+
     assert len(tokens) % 3 == 0
 
+    # get control global control prefix for the beginning of a sequence and the continuation of a sequence
+    z_start, z_cont = control_prefix(instruments, task, vocab)
+
     history = tokens.copy()
-    lookback = max(len(tokens) - 1017, 0)
+    prefix = None
+
+    if (len(tokens) + len(z_start) + 1) > 1024:
+        lookback = len(tokens) - (1024 - len(z_cont) - 1)
+        prefix = z_cont
+    else:
+        lookback = max(len(tokens) - (1024 - len(z_start) - 1), 0)
+        prefix = z_start
+
     history = history[lookback:] # Markov window
     offset = ops.min_time(history, seconds=False)
     history[::3] = [tok - offset for tok in history[::3]] # relativize time in the history buffer
@@ -92,7 +134,8 @@ def add_token(model, z, tokens, top_p, temperature, current_time, masked_instrs,
     new_token = []
     with torch.no_grad():
         for i in range(3):
-            input_tokens = torch.tensor(z + history + new_token).unsqueeze(0).to(model.device)
+            # change this:
+            input_tokens = torch.tensor(pad + prefix + history + new_token).unsqueeze(0).to(model.device)
             logits = model(input_tokens).logits[0,-1]
 
             idx = input_tokens.shape[1]-1
@@ -114,13 +157,19 @@ def add_token(model, z, tokens, top_p, temperature, current_time, masked_instrs,
 
     return new_token
 
-
-def generate(model, start_time, end_time, inputs=None, controls=None, top_p=1.0, temperature=1.0, masked_instrs=[], debug=False, delta=DELTA*TIME_RESOLUTION):
+def generate(model, start_time, end_time, inputs=None, controls=None, instruments=None, top_p=1.0, temperature=1.0, masked_instrs=[], vocab='triplet-midi', debug=False, delta=DELTA*TIME_RESOLUTION):
+    
+    if vocab != 'triplet-midi':
+        raise ValueError(f'Invalid vocabulary type "{vocab}"')
+    
     if inputs is None:
         inputs = []
 
     if controls is None:
         controls = []
+
+    if instruments is None:
+        raise ValueError('Must provide instrument controls')
 
     start_time = int(TIME_RESOLUTION*start_time)
     end_time = int(TIME_RESOLUTION*end_time)
@@ -141,9 +190,9 @@ def generate(model, start_time, end_time, inputs=None, controls=None, top_p=1.0,
         print('Controls')
         ops.print_tokens(controls)
 
-    z = [ANTICIPATE] if len(controls) > 0 or len(future) > 0 else [AUTOREGRESS]
+    task = [ANTICIPATE] if len(controls) > 0 or len(future) > 0 else [AUTOREGRESS]
     if debug:
-        print('AR Mode' if z[0] == AUTOREGRESS else 'AAR Mode')
+        print('AR Mode' if task[0] == AUTOREGRESS else 'AAR Mode')
 
     # interleave the controls with the events
     tokens, controls = ops.anticipate(prompt, ops.sort(controls + [CONTROL_OFFSET+token for token in future]))
@@ -181,7 +230,7 @@ def generate(model, start_time, end_time, inputs=None, controls=None, top_p=1.0,
                     # nothing more to anticipate
                     anticipated_time = math.inf
 
-            new_token = add_token(model, z, tokens, top_p, temperature, max(start_time,current_time), masked_instrs)
+            new_token = add_token(model, task, tokens, instruments, top_p, temperature, max(start_time,current_time), masked_instrs, vocab)
             new_time = new_token[0] - TIME_OFFSET
             if new_time >= end_time:
                 break
