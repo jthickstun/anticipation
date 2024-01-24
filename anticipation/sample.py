@@ -133,8 +133,7 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
     new_token = []
     with torch.no_grad():
         for i in range(3):
-            # change this:
-            input_tokens = torch.tensor(pad + prefix + history + new_token).unsqueeze(0).to(model.device)
+            input_tokens = torch.tensor([pad] + prefix + history + new_token).unsqueeze(0).to(model.device)
             logits = model(input_tokens).logits[0,-1]
 
             idx = input_tokens.shape[1]-1
