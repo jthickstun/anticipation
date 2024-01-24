@@ -106,8 +106,6 @@ def control_prefix(instruments, task):
         z_cont[0:0] = (3-len(z_cont)%3)*[pad]
     z_cont = [pad] + z_cont
 
-    assert len(z_start) > len(z_cont)
-
     return z_start, z_cont
 
 def add_token(model, task, tokens, instruments, top_p, temperature, current_time, masked_instrs, debug=False):
