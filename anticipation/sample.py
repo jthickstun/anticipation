@@ -101,10 +101,9 @@ def control_prefix(instruments, task):
     if len(z_start) % 3 > 0:
         z_start[1:1] = (3-len(z_start)%3)*[pad]
 
-    # pad the continuation controls out to an offset of 1 (mod 3)
+    # pad the continuation controls out to an offset of 0 (mod 3)
     if len(z_cont) % 3 > 0:
         z_cont[0:0] = (3-len(z_cont)%3)*[pad]
-    z_cont = [pad] + z_cont
 
     return z_start, z_cont
 
@@ -225,7 +224,7 @@ def generate(model, start_time, end_time, inputs=None, controls=None, instrument
                     # nothing more to anticipate
                     anticipated_time = math.inf
 
-            new_token = add_token(model, task, tokens, instruments, top_p, temperature, max(start_time,current_time), masked_instrs)
+            new_token = add_token(model, task, tokens, instruments, top_p, temperature, max(start_time,current_time), masked_instrs, debug)
             new_time = new_token[0] - TIME_OFFSET
             if new_time >= end_time:
                 break
