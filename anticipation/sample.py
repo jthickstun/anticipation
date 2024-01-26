@@ -101,9 +101,10 @@ def control_prefix(instruments, task):
     if len(z_start) % 3 > 0:
         z_start[1:1] = (3-len(z_start)%3)*[pad]
 
-    # pad the continuation controls out to an offset of 0 (mod 3)
+    # pad the continuation controls out to an offset of 1 (mod 3)
     if len(z_cont) % 3 > 0:
         z_cont[0:0] = (3-len(z_cont)%3)*[pad]
+    z_cont = [pad] + z_cont
 
     return z_start, z_cont
 
@@ -123,7 +124,7 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
         prefix = z_cont
     else:
         lookback = max(len(tokens) - (1024 - len(z_start) - 1), 0)
-        prefix = z_start
+        prefix = [pad] + z_start
 
     history = history[lookback:] # Markov window
     offset = ops.min_time(history, seconds=False)
@@ -132,7 +133,7 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
     new_token = []
     with torch.no_grad():
         for i in range(3):
-            input_tokens = torch.tensor([pad] + prefix + history + new_token).unsqueeze(0).to(model.device)
+            input_tokens = torch.tensor(prefix + history + new_token).unsqueeze(0).to(model.device)
             logits = model(input_tokens).logits[0,-1]
 
             idx = input_tokens.shape[1]-1
