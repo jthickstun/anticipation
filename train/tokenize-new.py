@@ -179,7 +179,7 @@ if __name__ == '__main__':
     parser.add_argument('datadir', help='directory containing the dataset to tokenize')
     parser.add_argument('outdir', help='location to store the tokenized datafile')
     parser.add_argument('task', help='task for which we are preparing sequences')
-    parser.add_argument('context', type=int, help='context length for packing training sequences')
+    parser.add_argument('context', type=int, default=1024, help='context length for packing training sequences')
     parser.add_argument('-v', '--vocab', default='triplet-midi', help='name of vocabulary to use for tokenization')
     parser.add_argument('--workers', type=int, default=16, help='number of workers/shards')
     parser.add_argument('--debug', action='store_true', help='debugging (single shard; non-parallel)')
