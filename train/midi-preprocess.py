@@ -8,7 +8,7 @@ from tqdm import tqdm
 from anticipation.convert import midi_to_compound
 from anticipation.config import PREPROC_WORKERS
 
-from anticipation.mmvocab import vocab
+from anticipation.vocabs.tripletmidi import vocab
 
 
 def convert_midi(filename, debug=False):
