@@ -1,6 +1,7 @@
 import traceback
 from argparse import ArgumentParser
 from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from glob import glob
 
 from tqdm import tqdm
@@ -35,7 +36,8 @@ def main(args):
     harmonize = args.harmonize
     print(f'Preprocessing {len(filenames)} files with {PREPROC_WORKERS} workers')
     with ProcessPoolExecutor(max_workers=PREPROC_WORKERS) as executor:
-        results = list(tqdm(executor.map(convert_midi, filenames, harmonize), desc='Preprocess', total=len(filenames)))
+        partial_convert_midi = partial(convert_midi, harmonize=harmonize)
+        results = list(tqdm(executor.map(partial_convert_midi, filenames), desc='Preprocess', total=len(filenames)))
 
     discards = round(100*sum(results)/float(len(filenames)),2)
     print(f'Successfully processed {len(filenames) - sum(results)} files (discarded {discards}%)')
