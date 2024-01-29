@@ -49,6 +49,9 @@ PAD = SPECIAL_OFFSET + 3
 INSTR_OFFSET = SPECIAL_OFFSET + 4        # instrument-conditioning tokens
 VOCAB_SIZE = INSTR_OFFSET+MAX_INSTR
 
+# chord conditioning
+CHORD_INSTR = INSTR_OFFSET + 101         # lead sheet stored in program_code=goblins
+
 vocab = {
     'config' : {
         'skew' : False,
