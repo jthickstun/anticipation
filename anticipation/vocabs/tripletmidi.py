@@ -73,7 +73,8 @@ vocab = {
     'duration_offset' : DUR_OFFSET,
     'note_offset' : NOTE_OFFSET,
     'special_offset' : SPECIAL_OFFSET,
-    'instrument_offset' : INSTR_OFFSET
+    'instrument_offset' : INSTR_OFFSET,
+    'control_offset': CONTROL_OFFSET
 }
 
 if __name__ == '__main__':
