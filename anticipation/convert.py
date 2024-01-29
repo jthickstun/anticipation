@@ -7,8 +7,9 @@ from collections import defaultdict
 import mido
 
 from anticipation.config import *
-from anticipation.vocab import *
+# from anticipation.vocab import *
 from anticipation.ops import unpad
+from anticipation.vocabs.tripletmidi import vocab
 
 
 def midi_to_interarrival(midifile, debug=False, stats=False):
@@ -296,19 +297,25 @@ def compound_to_events(tokens, stats=False):
 def events_to_compound(tokens, debug=False):
     tokens = unpad(tokens)
 
+    control_offset = vocab['control_offset']
+    time_offset = vocab['time_offset']
+    duration_offset = vocab['duration_offset']
+    note_offset = vocab['note_offset']
+    separator = vocab['separator']
+
     # move all tokens to zero-offset for synthesis
-    tokens = [tok - CONTROL_OFFSET if tok >= CONTROL_OFFSET and tok != SEPARATOR else tok
+    tokens = [tok - control_offset if tok >= control_offset and tok != separator else tok
               for tok in tokens]
 
     # remove type offsets
-    tokens[0::3] = [tok - TIME_OFFSET if tok != SEPARATOR else tok for tok in tokens[0::3]]
-    tokens[1::3] = [tok - DUR_OFFSET if tok != SEPARATOR else tok for tok in tokens[1::3]]
-    tokens[2::3] = [tok - NOTE_OFFSET if tok != SEPARATOR else tok for tok in tokens[2::3]]
+    tokens[0::3] = [tok - time_offset if tok != separator else tok for tok in tokens[0::3]]
+    tokens[1::3] = [tok - duration_offset if tok != separator else tok for tok in tokens[1::3]]
+    tokens[2::3] = [tok - note_offset if tok != separator else tok for tok in tokens[2::3]]
 
     offset = 0 # add max time from previous track for synthesis
     track_max = 0 # keep track of max time in track
     for j, (time,dur,note) in enumerate(zip(tokens[0::3],tokens[1::3],tokens[2::3])):
-        if note == SEPARATOR:
+        if note == separator:
             offset += track_max
             track_max = 0
             if debug:
@@ -318,8 +325,8 @@ def events_to_compound(tokens, debug=False):
             tokens[3*j] += offset
 
     # strip sequence separators
-    assert len([tok for tok in tokens if tok == SEPARATOR]) % 3 == 0
-    tokens = [tok for tok in tokens if tok != SEPARATOR]
+    assert len([tok for tok in tokens if tok == separator]) % 3 == 0
+    tokens = [tok for tok in tokens if tok != separator]
 
     assert len(tokens) % 3 == 0
     out = 5*(len(tokens)//3)*[0]
@@ -329,6 +336,8 @@ def events_to_compound(tokens, debug=False):
     out[3::5] = [tok//2**7 for tok in tokens[2::3]]
     out[4::5] = (len(tokens)//3)*[72] # default velocity
 
+    # TODO: these macros come from config.py, should they instead be 
+    # read from vocab?
     assert max(out[1::5]) < MAX_DUR
     assert max(out[2::5]) < MAX_PITCH
     assert max(out[3::5]) < MAX_INSTR
