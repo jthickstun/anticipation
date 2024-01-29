@@ -80,13 +80,14 @@ def masked_instr_logits(logits, masked_instrs):
 
     return logits
 
-def control_prefix(instruments, task):
-    task_string = 'autoregress' if task == AUTOREGRESS else 'anticipate'
-    task = vocab['task'][task_string]
+def control_prefix(instruments, task, vocab):
+    task = vocab['task'][task]
     instr_offset = vocab['instrument_offset']
     separator = vocab['separator']
     pad = vocab['pad']
 
+    # get the list of instruments to condition on
+    # by convention, let's provide the list sorted by instrument code
     instr_controls = sorted(instruments)
     instr_controls = [instr_offset + instr for instr in instr_controls]
 
@@ -114,7 +115,8 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
     assert len(tokens) % 3 == 0
 
     # get control global control prefix for the beginning of a sequence and the continuation of a sequence
-    z_start, z_cont = control_prefix(instruments, task)
+    task_string = 'autoregress' if task == AUTOREGRESS else 'anticipate'
+    z_start, z_cont = control_prefix(instruments, task_string, vocab)
 
     history = tokens.copy()
     prefix = None
