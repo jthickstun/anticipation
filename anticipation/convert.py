@@ -11,6 +11,11 @@ from anticipation.config import *
 from anticipation.ops import unpad
 from anticipation.vocabs.tripletmidi import vocab
 
+import sys
+sys.path.append('/Users/npb/Desktop/anticipation/anticipation/chorder/')
+from chorder import Chord, Dechorder, chord_to_midi, play_chords
+from copy import deepcopy
+
 
 def midi_to_interarrival(midifile, debug=False, stats=False):
     midi = mido.MidiFile(midifile)
@@ -126,13 +131,20 @@ def interarrival_to_midi(tokens, debug=False):
     return mid
 
 
-def midi_to_compound(midifile, vocab, debug=False):
+def midi_to_compound(midifile, vocab, harmonize, debug=False):
     time_res = vocab['config']['midi_quantization']
 
     if type(midifile) == str:
         midi = mido.MidiFile(midifile)
     else:
         midi = midifile
+
+    if harmonize:
+        mf_copy = deepcopy(midi)
+        mf_enchord = Dechorder.enchord(mf_copy)
+        mf_chords = play_chords(mf_enchord)
+        mf_chords.instruments[0].program = vocab['chord_instrument']
+        midi.instruments.extend(mf_chords.instruments)
 
     tokens = []
     note_idx = 0
