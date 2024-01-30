@@ -5,13 +5,39 @@ from glob import glob
 from tqdm import tqdm
 from pathlib import Path
 
+import numpy as np
+
 from anticipation import ops
 from anticipation.tokenize import maybe_tokenize
+from anticipation.config import DELTA, TIME_RESOLUTION
 
+
+def extract_instruments(all_events, instruments, vocab):
+    events = []
+    controls = []
+
+    control_offset = vocab['control_offset']
+    note_offset = vocab['note_offset']
+    separator = vocab['separator']
+    rest = vocab['rest']
+
+    for time, dur, note in zip(all_events[0::3],all_events[1::3],all_events[2::3]):
+        assert note < control_offset         # shouldn't be in the sequence yet
+        assert note not in [separator, rest] # these shouldn't either
+
+        instr = (note-note_offset)//2**7
+        if instr in instruments:
+            # mark this event as a control
+            controls.extend([control_offset+time, control_offset+dur, control_offset+note])
+        else:
+            events.extend([time, dur, note])
+
+    return events, controls
 
 def prepare_triplet_midi(midifile, vocab):
     with open(midifile, 'r') as f:
-        events, truncations, status = maybe_tokenize([int(token) for token in f.read().split()])
+        cmp = [int(token) for token in f.read().split()]
+        events, truncations, status = maybe_tokenize(cmp, vocab)
 
     if status > 0:
         raise ValueError(f'Bad midi sequence (status {status})')
@@ -19,7 +45,7 @@ def prepare_triplet_midi(midifile, vocab):
     return events
 
 
-def control_prefix(sequence, task, vocab):
+def control_prefix(instruments, task, vocab):
     task = vocab['task'][task]
     instr_offset = vocab['instrument_offset']
     separator = vocab['separator']
@@ -27,7 +53,7 @@ def control_prefix(sequence, task, vocab):
 
     # get the list of instruments to condition on
     # by convention, let's provide the list sorted by instrument code
-    instruments = sorted(ops.get_instruments(sequence).keys())
+    instr_controls = sorted(instruments)
     instr_controls = [instr_offset + instr for instr in instruments]
 
     vocab_size = vocab['config']['size']
@@ -72,28 +98,58 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             # record the original end time before extracting control tokens
             end_time = ops.max_time(events, seconds=False)
 
-            #
-            # TODO: anticipation happens here (extract control tokens)
+            # anticipation happens here (extract control tokens)
             #   * extract the chord sequence to anticipate
             #   * extract the (randomly selected) "human" sequence to anti-anticipate
+            
+            instruments = list(ops.get_instruments(events).keys())
+
+            if len(instruments) < 2:
+                continue
+
+            # extract the chord sequence to anticipate
+            # check if vocab['chord_instrument'] is in instruments
+            if vocab['chord_instrument'] in instruments:
+                # extract the chord sequence to anticipate
+                events, chord_controls = extract_instruments(events, [vocab['chord_instrument']])
+                instruments.remove(vocab['chord_instrument'])
+            else:
+                continue
+
+            # extract the randomly selected "human" sequence to anti-anticipate
+            human = np.random.choice(instruments, 1, replace=False)
+            events, human_controls = extract_instruments(events, human)
+            
+            #
+            #
+            #
             #
 
             # get the global control tokens for this sequence
             # do this before padding because some ops don't handle REST properly
-            z_start, z_cont = prefix(events)
+            instruments = sorted(ops.get_instruments(events).keys())
+            z_start, z_cont = prefix(instruments)
 
             # add rest tokens to events after extracting control tokens
             # (see Section 3.2 of the paper for why we do this)
             events = ops.pad(events, end_time)
 
             #
-            # TODO: interleave the events and anticipated controls
+            # interleave the events and anticipated controls
             #    * something like this: tokens, controls = ops.anticipate(events, controls)
             #    * might need some care about how to anti-anticipate
             #
 
+            tokens, chord_controls = ops.anticipate(events, chord_controls)
+            tokens, human_controls = ops.anticipate(events, human_controls, delta=(-1*DELTA*TIME_RESOLUTION))
+
+            #
+            #
+            #
+            #
+
             # write out full contexts to file
-            concatenated_tokens.extend(z_start + events)
+            concatenated_tokens.extend(z_start + tokens)
             while len(concatenated_tokens) >= seqlen-len(z):
                 seq = concatenated_tokens[0:seqlen-len(z)]
                 concatenated_tokens = concatenated_tokens[len(seq):]
@@ -123,7 +179,7 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
 
 
 def preprocess_midi(midifiles, output, seqlen, task, vocab, idx):
-    prefix = lambda seq: control_prefix(seq, task, vocab)
+    prefix = lambda instruments: control_prefix(instruments, task, vocab)
     prepare = lambda mid: prepare_triplet_midi(mid, vocab)
 
     return pack_tokens(midifiles, output, idx, vocab, prepare, prefix, seqlen=seqlen)
