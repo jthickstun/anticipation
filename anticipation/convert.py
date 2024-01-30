@@ -274,7 +274,12 @@ def compound_to_midi(tokens, vocab, debug=False):
     return mid
 
 
-def compound_to_events(tokens, stats=False):
+def compound_to_events(tokens, vocab, stats=False):
+    time_offset = vocab['time_offset']
+    note_offset = vocab['note_offset']
+    separator = vocab['separator']
+    dur_offset = vocab['duration_offset']
+
     assert len(tokens) % 5 == 0
     tokens = tokens.copy()
 
@@ -284,19 +289,19 @@ def compound_to_events(tokens, stats=False):
     # combine (note, instrument)
     assert all(-1 <= tok < 2**7 for tok in tokens[2::4])
     assert all(-1 <= tok < 129 for tok in tokens[3::4])
-    tokens[2::4] = [SEPARATOR if note == -1 else MAX_PITCH*instr + note
+    tokens[2::4] = [separator if note == -1 else MAX_PITCH*instr + note
                     for note, instr in zip(tokens[2::4],tokens[3::4])]
-    tokens[2::4] = [NOTE_OFFSET + tok for tok in tokens[2::4]]
+    tokens[2::4] = [note_offset + tok for tok in tokens[2::4]]
     del tokens[3::4]
 
     # max duration cutoff and set unknown durations to 250ms
     truncations = sum([1 for tok in tokens[1::3] if tok >= MAX_DUR])
     tokens[1::3] = [TIME_RESOLUTION//4 if tok == -1 else min(tok, MAX_DUR-1)
                     for tok in tokens[1::3]]
-    tokens[1::3] = [DUR_OFFSET + tok for tok in tokens[1::3]]
+    tokens[1::3] = [dur_offset + tok for tok in tokens[1::3]]
 
     assert min(tokens[0::3]) >= 0
-    tokens[0::3] = [TIME_OFFSET + tok for tok in tokens[0::3]]
+    tokens[0::3] = [time_offset + tok for tok in tokens[0::3]]
 
     assert len(tokens) % 3 == 0
 
@@ -417,7 +422,7 @@ def events_to_midi(tokens, vocab, debug=False):
     return compound_to_midi(events_to_compound(tokens, debug=debug), vocab, debug=debug)
 
 def midi_to_events(midifile, debug=False):
-    return compound_to_events(midi_to_compound(midifile, debug=debug))
+    return compound_to_events(midi_to_compound(midifile, debug=debug), vocab, debug=debug)
 
 def midi_to_mm(midifile, vocab, debug=False):
     return compound_to_mm(midi_to_compound(midifile, vocab, debug=debug), vocab)

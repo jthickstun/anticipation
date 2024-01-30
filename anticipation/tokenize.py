@@ -72,12 +72,12 @@ def extract_instruments(all_events, instruments):
     return events, controls
 
 
-def maybe_tokenize(compound_tokens):
+def maybe_tokenize(compound_tokens, vocab):
     # skip sequences with very few events
     if len(compound_tokens) < COMPOUND_SIZE*MIN_TRACK_EVENTS:
         return None, None, 1 # short track
 
-    events, truncations = compound_to_events(compound_tokens, stats=True)
+    events, truncations = compound_to_events(compound_tokens, vocab, stats=True)
     end_time = ops.max_time(events, seconds=False)
 
     # don't want to deal with extremely short tracks
