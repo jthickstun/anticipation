@@ -132,14 +132,16 @@ def interarrival_to_midi(tokens, debug=False):
     return mid
 
 def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
-    # Note that this function uses miditoolkit instead of mido objects due to 
-    # chorder's requirements
-    time_res = vocab['config']['midi_quantization']
+    # This function uses miditoolkit instead of mido objects to satisfy chorder's requirements
 
     if type(midifile) == str:
         midi = miditoolkit.MidiFile(midifile)
     else:
         raise ValueError('midi_to_compound() requires a filepath to a midi file') 
+
+    # We don't actually use these since miditoolkit parses in ticks to begin with.
+    time_res = vocab['config']['midi_quantization']
+    midi.ticks_per_beat = time_res
 
     if harmonize:
         mtk_midi = midi
@@ -153,75 +155,30 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
         mtk_midi.instruments.extend(mtk_midi_chords.instruments)
 
     tokens = []
-    note_idx = 0
-    open_notes = defaultdict(list)
 
-    time = 0
-    instruments = defaultdict(int) # default to code 0 = piano
-    tempo = 500000 # default tempo: 500000 microseconds per beat
-    for message in midi:
-        time += message.time
+    for inst in midi.instruments:
+        for note in inst.notes:
+            # sanity check: negative time?
+            if note.start < 0:
+                raise ValueError
+            
+            # special case: channel 9 corresponds to is.drum flag!
+            instr = 128 if inst.is_drum else inst.program
 
-        # sanity check: negative time?
-        if message.time < 0:
-            raise ValueError
+            tokens.append(note.start)
+            tokens.append(note.end - note.start)
+            tokens.append(note.pitch)
+            tokens.append(instr)
+            tokens.append(note.velocity)
 
-        if message.type == 'program_change':
-            instruments[message.channel] = message.program
-        elif message.type in ['note_on', 'note_off']:
-            # special case: channel 9 is drums!
-            instr = 128 if message.channel == 9 else instruments[message.channel]
-
-            if message.type == 'note_on' and message.velocity > 0: # onset
-                # time quantization
-                time_in_ticks = round(time_res*time)
-
-                # Our compound word is: (time, duration, note, instr, velocity)
-                tokens.append(time_in_ticks) # 5ms resolution
-                tokens.append(-1) # placeholder (we'll fill this in later)
-                tokens.append(message.note)
-                tokens.append(instr)
-                tokens.append(message.velocity)
-
-                open_notes[(instr,message.note,message.channel)].append((note_idx, time))
-                note_idx += 1
-            else: # offset
-                try:
-                    open_idx, onset_time = open_notes[(instr,message.note,message.channel)].pop(0)
-                except IndexError:
-                    if debug:
-                        print('WARNING: ignoring bad offset')
-                else:
-                    duration_ticks = round(time_res*(time-onset_time))
-                    tokens[5*open_idx + 1] = duration_ticks
-                    #del open_notes[(instr,message.note,message.channel)]
-        elif message.type == 'set_tempo':
-            tempo = message.tempo
-        elif message.type == 'time_signature':
-            pass # we use real time
-        elif message.type in ['aftertouch', 'polytouch', 'pitchwheel', 'sequencer_specific']:
-            pass # we don't attempt to model these
-        elif message.type == 'control_change':
-            pass # this includes pedal and per-track volume: ignore for now
-        elif message.type in ['track_name', 'text', 'end_of_track', 'lyrics', 'key_signature',
-                              'copyright', 'marker', 'instrument_name', 'cue_marker',
-                              'device_name', 'sequence_number']:
-            pass # possibly useful metadata but ignore for now
-        elif message.type == 'channel_prefix':
-            pass # relatively common, but can we ignore this?
-        elif message.type in ['midi_port', 'smpte_offset', 'sysex']:
-            pass # I have no idea what this is
-        else:
-            if debug:
-                print('UNHANDLED MESSAGE', message.type, message)
-
-    unclosed_count = 0
-    for _,v in open_notes.items():
-        unclosed_count += len(v)
-
-    if debug and unclosed_count > 0:
-        print(f'WARNING: {unclosed_count} unclosed notes')
-        print('  ', midifile)
+            # Does not parse
+            # - tempo
+            # - time signature
+            # - aftertouch, polytouch, pitchweel, sequencer_specific
+            # - control_change
+            # - track_name, text, end_of_track, lyrics, key_signature, marker, etc.
+            # - channel_prefix
+            # = midi_port, smpte_offset, sysex
 
     return tokens
 
