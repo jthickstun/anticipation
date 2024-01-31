@@ -6,7 +6,7 @@ from glob import glob
 
 from tqdm import tqdm
 
-from anticipation.convert import midi_to_compound
+from anticipation.convert import midi_to_compound_new
 from anticipation.config import PREPROC_WORKERS
 
 from anticipation.vocabs.tripletmidi import vocab
@@ -14,7 +14,7 @@ from anticipation.vocabs.tripletmidi import vocab
 
 def convert_midi(filename, harmonize, debug=False):
     try:
-        tokens = midi_to_compound(filename, vocab, harmonize, debug=debug)
+        tokens = midi_to_compound_new(filename, vocab, harmonize, debug=debug)
     except Exception:
         if debug:
             print('Failed to process: ', filename)
