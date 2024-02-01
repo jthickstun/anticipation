@@ -57,7 +57,7 @@ vocab = {
     'config' : {
         'skew' : False,
         'anticipation' : DELTA,
-        'anti-anticipation:': HUMAN_DELTA,
+        'anti-anticipation' : HUMAN_DELTA,
         'midi_quantization' : MIDI_QUANTIZATION,
         'max_time' : MAX_TIME,
         'max_duration' : MAX_DUR,
