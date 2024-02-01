@@ -151,7 +151,7 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
         # convert markers to midi notes
         mtk_midi_chords = play_chords(mtk_midi_enchord)
         # change instrument to midi instrument
-        mtk_midi_chords.instruments[0].program = vocab['chord_instrument']
+        mtk_midi_chords.instruments[0].program = vocab['chord_instrument'] - vocab['instrument_offset']
         mtk_midi.instruments.extend(mtk_midi_chords.instruments)
 
     tokens = []
@@ -168,6 +168,7 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
             tokens.append(note.start)
             tokens.append(note.end - note.start)
             tokens.append(note.pitch)
+            assert (-1 <= instr < 129)
             tokens.append(instr)
             tokens.append(note.velocity)
 
