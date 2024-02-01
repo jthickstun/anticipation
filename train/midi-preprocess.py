@@ -10,9 +10,10 @@ from anticipation.convert import midi_to_compound_new
 from anticipation.config import PREPROC_WORKERS
 
 from anticipation.vocabs.tripletmidi import vocab
+import os
 
 
-def convert_midi(filename, harmonize, debug=False):
+def convert_midi(filename, harmonize, output=None, debug=False):
     try:
         tokens = midi_to_compound_new(filename, vocab, harmonize, debug=debug)
     except Exception:
@@ -22,7 +23,12 @@ def convert_midi(filename, harmonize, debug=False):
 
         return 1
 
-    with open(f"{filename}.compound.txt", 'w') as f:
+    if output:
+        output_filename = os.path.join(output, os.path.basename(filename) + ".compound.txt")
+    else:
+        output_filename = f"{filename}.compound.txt"
+
+    with open(output_filename, 'w') as f:
         f.write(' '.join(str(tok) for tok in tokens))
 
     return 0
@@ -34,9 +40,13 @@ def main(args):
             + glob(args.dir + '/**/*.midi', recursive=True)
     
     harmonize = args.harmonize
+    if args.output:
+        output = args.output
+    else:
+        output = None
     print(f'Preprocessing {len(filenames)} files with {PREPROC_WORKERS} workers')
     with ProcessPoolExecutor(max_workers=PREPROC_WORKERS) as executor:
-        partial_convert_midi = partial(convert_midi, harmonize=harmonize)
+        partial_convert_midi = partial(convert_midi, harmonize=harmonize, output=output)
         results = list(tqdm(executor.map(partial_convert_midi, filenames), desc='Preprocess', total=len(filenames)))
 
     discards = round(100*sum(results)/float(len(filenames)),2)
@@ -45,5 +55,6 @@ def main(args):
 if __name__ == '__main__':
     parser = ArgumentParser(description='prepares a MIDI dataset')
     parser.add_argument('dir', help='directory containing .mid files for training')
+    parser.add_argument('--output', help='optional output directory, otherwise done in place')
     parser.add_argument('--harmonize', type=bool, default=False, help="harmonize and store chords with program code specified by vocab")
     main(parser.parse_args())
