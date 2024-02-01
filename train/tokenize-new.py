@@ -141,7 +141,7 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             #
 
             tokens, chord_controls = ops.anticipate(events, chord_controls)
-            tokens, human_controls = ops.anticipate(events, human_controls, delta=(-1*DELTA*TIME_RESOLUTION))
+            tokens, human_controls = ops.anticipate(events, human_controls, delta=(-1*HUMAN_DELTA*TIME_RESOLUTION))
 
             #
             #
