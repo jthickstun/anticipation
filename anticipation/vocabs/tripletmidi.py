@@ -7,6 +7,7 @@ The vocabulary used for models in the paper "Anticipatory Music Transformer".
 #
 
 DELTA = 5                                # seconds of anticipation
+HUMAN_DELTA = -1                         # seconds of anti-anticipation
 
 # MIDI
 MAX_PITCH = 128                          # 128 MIDI pitches
@@ -56,6 +57,7 @@ vocab = {
     'config' : {
         'skew' : False,
         'anticipation' : DELTA,
+        'anti-anticipation:': HUMAN_DELTA,
         'midi_quantization' : MIDI_QUANTIZATION,
         'max_time' : MAX_TIME,
         'max_duration' : MAX_DUR,

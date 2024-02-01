@@ -207,6 +207,7 @@ def main(args):
     print(f"  task = {args.task}")
     print(f"  context = {args.context}")
     print(f"  anticipation interval = {vocab['config']['anticipation']} seconds")
+    print(f"  anti-anticipation interval = {vocab['config']['anti-anticipation']} seconds")
     print(f"  skew = {vocab['config']['skew']}")
 
     files = glob(os.path.join(args.datadir, '**/*.compound.txt'), recursive=True)
