@@ -8,6 +8,7 @@ CONTEXT_SIZE = 1024                # model context
 EVENT_SIZE = 3                     # each event/control is encoded as 3 tokens
 M = 341                            # model context (1024 = 1 + EVENT_SIZE*M)
 DELTA = 5                          # anticipation time in seconds
+HUMAN_DELTA = -1                    # anti-anticipation time in seconds
 
 assert CONTEXT_SIZE == 1+EVENT_SIZE*M
 

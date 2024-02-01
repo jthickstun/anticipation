@@ -9,7 +9,7 @@ import numpy as np
 
 from anticipation import ops
 from anticipation.tokenize import maybe_tokenize
-from anticipation.config import DELTA, TIME_RESOLUTION
+from anticipation.config import HUMAN_DELTA, TIME_RESOLUTION
 
 
 def extract_instruments(all_events, instruments, vocab):
@@ -141,7 +141,7 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             #
 
             tokens, chord_controls = ops.anticipate(events, chord_controls)
-            tokens, human_controls = ops.anticipate(events, human_controls, delta=(-1*HUMAN_DELTA*TIME_RESOLUTION))
+            tokens, human_controls = ops.anticipate(events, human_controls, delta=(HUMAN_DELTA*TIME_RESOLUTION))
 
             #
             #
