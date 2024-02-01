@@ -139,9 +139,8 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
     else:
         raise ValueError('midi_to_compound() requires a filepath to a midi file') 
 
-    # We don't actually use these since miditoolkit parses in ticks to begin with.
     time_res = vocab['config']['midi_quantization']
-    midi.ticks_per_beat = time_res
+    # midi.ticks_per_beat = time_res
 
     if harmonize:
         mtk_midi = midi
@@ -153,8 +152,10 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
         # change instrument to midi instrument
         mtk_midi_chords.instruments[0].program = vocab['chord_instrument'] - vocab['instrument_offset']
         mtk_midi.instruments.extend(mtk_midi_chords.instruments)
+        midi = mtk_midi
 
     tokens = []
+    ticks_to_sec_map = midi.get_tick_to_time_mapping()
 
     for inst in midi.instruments:
         for note in inst.notes:
@@ -165,12 +166,16 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
             # special case: channel 9 corresponds to is.drum flag!
             instr = 128 if inst.is_drum else inst.program
 
-            tokens.append(note.start)
-            tokens.append(note.end - note.start)
-            tokens.append(note.pitch)
+            token = []
+
+            token.append(round(time_res * ticks_to_sec_map[note.start]))
+            token.append(round(time_res * ticks_to_sec_map[note.end - note.start]))
+            token.append(note.pitch)
             assert (-1 <= instr < 129)
-            tokens.append(instr)
-            tokens.append(note.velocity)
+            token.append(instr)
+            token.append(note.velocity)
+
+            tokens.append(token)
 
             # Does not parse
             # - tempo
@@ -181,6 +186,8 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
             # - channel_prefix
             # = midi_port, smpte_offset, sysex
 
+    tokens.sort(key=lambda x: x[0])
+    tokens = [ite for tk in tokens for ite in tk]
     return tokens
 
 def midi_to_compound(midifile, vocab, debug=False):
