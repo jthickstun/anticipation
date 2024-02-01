@@ -103,20 +103,22 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             
             instruments = list(ops.get_instruments(events).keys())
 
-            if len(instruments) < 2:
-                continue
-
             chords_program_num = vocab['chord_instrument'] - vocab['instrument_offset']
 
             # extract the chord sequence to anticipate
             # check if vocab['chord_instrument'] is in instruments
             chord_controls = None
             if chords_program_num in instruments:
+                # we want at least 2 instruments excluding chords
+                if len(instruments) < 3:
+                    continue
                 # extract the chord sequence to anticipate
                 events, chord_controls = extract_instruments(events, [chords_program_num], vocab)
                 instruments.remove(chords_program_num)
-            # else:
-            #     continue
+            else:
+                # we want at least 2 instruments
+                if len(instruments) < 2:
+                    continue
 
             # extract the randomly selected "human" sequence to anti-anticipate
             human = np.random.choice(instruments, 1, replace=False)
