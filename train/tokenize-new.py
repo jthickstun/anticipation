@@ -78,7 +78,6 @@ def control_prefix(instruments, task, vocab):
 def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
     vocab_size = vocab['config']['size']
     pad = vocab['pad']
-
     files = bad_files = seqcount = 0
     with open(output, 'w') as outfile:
         concatenated_tokens = []
@@ -107,18 +106,21 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             if len(instruments) < 2:
                 continue
 
+            chords_program_num = vocab['chord_instrument'] - vocab['instrument_offset']
+
             # extract the chord sequence to anticipate
             # check if vocab['chord_instrument'] is in instruments
-            if vocab['chord_instrument'] in instruments:
+            chord_controls = None
+            if chords_program_num in instruments:
                 # extract the chord sequence to anticipate
-                events, chord_controls = extract_instruments(events, [vocab['chord_instrument']])
-                instruments.remove(vocab['chord_instrument'])
-            else:
-                continue
+                events, chord_controls = extract_instruments(events, [chords_program_num], vocab)
+                instruments.remove(chords_program_num)
+            # else:
+            #     continue
 
             # extract the randomly selected "human" sequence to anti-anticipate
             human = np.random.choice(instruments, 1, replace=False)
-            events, human_controls = extract_instruments(events, human)
+            events, human_controls = extract_instruments(events, human, vocab)
             
             #
             #
@@ -140,7 +142,8 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             #    * might need some care about how to anti-anticipate
             #
 
-            tokens, chord_controls = ops.anticipate(events, chord_controls)
+            if chord_controls:
+                tokens, chord_controls = ops.anticipate(events, chord_controls)
             tokens, human_controls = ops.anticipate(events, human_controls, delta=(HUMAN_DELTA*TIME_RESOLUTION))
 
             #
