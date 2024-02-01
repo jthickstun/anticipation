@@ -134,6 +134,8 @@ def interarrival_to_midi(tokens, debug=False):
 def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
     # This function uses miditoolkit instead of mido objects to satisfy chorder's requirements
 
+    harmonized = 0
+
     if type(midifile) == str:
         midi = miditoolkit.MidiFile(midifile)
     else:
@@ -143,16 +145,16 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
     # midi.ticks_per_beat = time_res
 
     if harmonize:
-        mtk_midi = midi
-        mtk_midi_copy = deepcopy(mtk_midi)
+        mtk_midi_copy = deepcopy(midi)
         # add chords as markers
         mtk_midi_enchord = Dechorder.enchord(mtk_midi_copy)
         # convert markers to midi notes
         mtk_midi_chords = play_chords(mtk_midi_enchord)
         # change instrument to midi instrument
         mtk_midi_chords.instruments[0].program = vocab['chord_instrument'] - vocab['instrument_offset']
-        mtk_midi.instruments.extend(mtk_midi_chords.instruments)
-        midi = mtk_midi
+        if len(mtk_midi_chords.instruments[0].notes) > 0:
+            harmonized = 1
+        midi.instruments.extend(mtk_midi_chords.instruments)
 
     tokens = []
     ticks_to_sec_map = midi.get_tick_to_time_mapping()
@@ -188,7 +190,7 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
 
     tokens.sort(key=lambda x: x[0])
     tokens = [ite for tk in tokens for ite in tk]
-    return tokens
+    return tokens, harmonized
 
 def midi_to_compound(midifile, vocab, debug=False):
     time_res = vocab['config']['midi_quantization']
