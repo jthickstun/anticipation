@@ -13,7 +13,7 @@ from anticipation.vocabs.tripletmidi import vocab
 import os
 
 
-def convert_midi(filename, harmonize, output=None, debug=False):
+def convert_midi(filename, harmonize, output=None, debug=True):
     try:
         tokens, harmonized = midi_to_compound_new(filename, vocab, harmonize, debug=debug)
         # tokens = midi_to_compound(filename, vocab, debug=debug)
@@ -61,5 +61,5 @@ if __name__ == '__main__':
     parser = ArgumentParser(description='prepares a MIDI dataset')
     parser.add_argument('dir', help='directory containing .mid files for training')
     parser.add_argument('--output', help='optional output directory, otherwise done in place')
-    parser.add_argument('--harmonize', type=bool, default=False, help="harmonize and store chords with program code specified by vocab")
+    parser.add_argument('--harmonize', action='store_true', help="harmonize and store chords with program code specified by vocab")
     main(parser.parse_args())
