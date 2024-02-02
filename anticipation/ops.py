@@ -187,6 +187,57 @@ def anticipate(events, controls, delta=DELTA*TIME_RESOLUTION):
 
     return tokens, controls
 
+def anticipate_and_anti_anticipate(events, chord_controls, human_controls, chord_delta=DELTA*TIME_RESOLUTION, human_delta=HUMAN_DELTA*TIME_RESOLUTION):
+    """
+    Interleave a sequence of events with anticipated controls.
+
+    Inputs:
+      events         : a sequence of events
+      chord_controls : a sequence of time-localized controls
+      chord_delta    : the anticipation interval
+      human_controls : a sequence of time-localized controls
+      human_delta    : the anti-anticipation interval
+    
+    Returns:
+      tokens         : interleaved events and anticipated controls
+      chord_controls : unconsumed chord controls (control time > max_time(events) + delta)
+      human_controls : unconsumed human controls (control time > max_time(events) + delta)
+
+    """
+
+    if len(chord_controls) == 0:
+        events, human_controls = anticipate(events, human_controls, human_delta)
+        return events, chord_controls, human_controls
+    if len(human_controls) == 0:
+        events, chord_controls = anticipate(events, chord_controls, chord_delta)
+        return events, chord_controls, human_controls
+
+    tokens = []
+    event_time = 0
+    chord_control_time = chord_controls[0] - ATIME_OFFSET
+    human_control_time = human_controls[0] - ATIME_OFFSET
+    for time, dur, note in zip(events[0::3],events[1::3],events[2::3]):
+        # while there is a control before the event:
+        while (event_time >= chord_control_time - chord_delta) or (event_time >= human_control_time - human_delta):
+            # insert controls in sort order
+            if (chord_control_time - chord_delta <= human_control_time - human_delta):
+                tokens.extend(chord_controls[0:3])
+                chord_controls = chord_controls[3:] # consume this control
+                chord_control_time = chord_controls[0] - ATIME_OFFSET if len(chord_controls) > 0 else float('inf')
+            else:
+                tokens.extend(human_controls[0:3])
+                human_controls = human_controls[3:] # consume this control
+                human_control_time = human_controls[0] - ATIME_OFFSET if len(human_controls) > 0 else float('inf')
+   
+        # second option: chord first convention:
+        # event_{t-1}         chords_controls in order, then human_controls in order          event_{t}
+
+        assert note < CONTROL_OFFSET
+        event_time = time - TIME_OFFSET
+        tokens.extend([time, dur, note])
+
+    return tokens, chord_controls, human_controls
+
 
 def sparsity(tokens):
     max_dt = 0

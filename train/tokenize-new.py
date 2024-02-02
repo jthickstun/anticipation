@@ -9,7 +9,7 @@ import numpy as np
 
 from anticipation import ops
 from anticipation.tokenize import maybe_tokenize
-from anticipation.config import HUMAN_DELTA, TIME_RESOLUTION
+from anticipation.config import DELTA, HUMAN_DELTA, TIME_RESOLUTION
 
 
 def extract_instruments(all_events, instruments, vocab):
@@ -131,7 +131,6 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
 
             # get the global control tokens for this sequence
             # do this before padding because some ops don't handle REST properly
-            instruments = sorted(ops.get_instruments(events).keys())
             z_start, z_cont = prefix(instruments)
 
             # add rest tokens to events after extracting control tokens
@@ -144,10 +143,9 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             #    * might need some care about how to anti-anticipate
             #
 
-            if chord_controls:
-                tokens, chord_controls = ops.anticipate(events, chord_controls)
-            tokens, human_controls = ops.anticipate(events, human_controls, delta=(HUMAN_DELTA*TIME_RESOLUTION))
-
+            # interleave control tokens
+            tokens, chord_controls, human_controls = ops.anticipate_and_anti_anticipate(events, chord_controls, human_controls, chord_delta=DELTA*TIME_RESOLUTION, human_delta=HUMAN_DELTA*TIME_RESOLUTION)
+            
             #
             #
             #
@@ -201,7 +199,7 @@ def main(args):
         from anticipation.vocabs.tripletmidi import vocab
     else:
         raise ValueError(f'Invalid vocabulary type "{args.vocab}"')
-
+    
     print('Tokenization parameters:')
     print(f"  vocab = {args.vocab}")
     print(f"  task = {args.task}")
