@@ -13,8 +13,10 @@ from anticipation.ops import unpad
 from anticipation.vocabs.tripletmidi import vocab
 
 import sys
-sys.path.append('/Users/npb/Desktop/anticipation/anticipation/chorder/')
-from chorder import Chord, Dechorder, chord_to_midi, play_chords
+# sys.path.append('/Users/npb/Desktop/anticipation/anticipation/chorder/')
+# from chorder import Chord, Dechorder, chord_to_midi, play_chords
+# Instead of the above, make sure tld of chorder has __init__.py:
+from chorder.chorder import Chord, Dechorder, chord_to_midi, play_chords
 from copy import deepcopy
 
 
