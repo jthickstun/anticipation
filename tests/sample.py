@@ -50,7 +50,7 @@ def generate(model, input_ids, tokens, safe_logits=safe_nop):
         logits = outputs.logits[:,-1,:]
         logits = safe_logits(logits, idx)
         probabilities = torch.softmax(logits, dim=-1)
-        next_token = torch.multinomial(probabilities, num_samples=1)
+        next_token = torch.multinomial(probabilities, num_samples=1).to(output_ids.device)
 
         # append the next token to the input_ids
         output_ids = torch.cat([output_ids, next_token], dim=-1)

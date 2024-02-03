@@ -42,8 +42,9 @@ def log_loss_quad(model, datafile, subsample):
             tokens = [int(token) for token in line.split()]
             tokens = torch.tensor(tokens).unsqueeze(0).cuda()
             with torch.no_grad():
-                logits = model(tokens).logits[0]
-                ce = torch.cat([ce, F.cross_entropy(logits[3:-1],tokens[0,4:],reduction='none').cpu()])
+                logits = model(tokens).logits[0].to(tokens.device)
+                #ce = torch.cat([ce, F.cross_entropy(logits[3:-1],tokens[0,4:],reduction='none').cpu()])
+                ce = torch.cat([ce, F.cross_entropy(logits[0:-4],tokens[0,4:],reduction='none').cpu()])
 
     res = {}
     res['loss'] = np.round(ce.mean().item(), 3)
