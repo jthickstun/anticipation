@@ -11,7 +11,6 @@ from anticipation import ops
 from anticipation.tokenize import maybe_tokenize
 from anticipation.config import DELTA, HUMAN_DELTA, TIME_RESOLUTION
 
-
 def extract_instruments(all_events, instruments, vocab):
     events = []
     controls = []
@@ -123,11 +122,6 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             # extract the randomly selected "human" sequence to anti-anticipate
             human = np.random.choice(instruments, 1, replace=False)
             events, human_controls = extract_instruments(events, human, vocab)
-            
-            #
-            #
-            #
-            #
 
             # get the global control tokens for this sequence
             # do this before padding because some ops don't handle REST properly
@@ -137,19 +131,8 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
             # (see Section 3.2 of the paper for why we do this)
             events = ops.pad(events, end_time)
 
-            #
-            # interleave the events and anticipated controls
-            #    * something like this: tokens, controls = ops.anticipate(events, controls)
-            #    * might need some care about how to anti-anticipate
-            #
-
             # interleave control tokens
             tokens, chord_controls, human_controls = ops.anticipate_and_anti_anticipate(events, chord_controls, human_controls, chord_delta=DELTA*TIME_RESOLUTION, human_delta=HUMAN_DELTA*TIME_RESOLUTION)
-            
-            #
-            #
-            #
-            #
 
             # write out full contexts to file
             concatenated_tokens.extend(z_start + tokens)
@@ -158,17 +141,11 @@ def pack_tokens(sequences, output, idx, vocab, prepare, prefix, seqlen):
                 concatenated_tokens = concatenated_tokens[len(seq):]
 
                 # relativize time to the context 
-                try: 
-                    seq = ops.translate(seq, -ops.min_time(seq, seconds=False), seconds=False)
-                    assert ops.min_time(seq, seconds=False) == 0
-                except OverflowError:
-                    # TODO: I'm not sure I ever actually check for overflow (max_time(seq) > 10000)
-                    #   * did I ever correctly check for this?
-                    #   * is this causing vocab overflows?
-                    #      - could be that there are overflows, but not bad enough to overflow
-                    #      the top of the vocabulary and hit the assertion max(seq) < vocab_size
-                    #      because time events are at the bottom of the vocabulary
-                    #   * follow up on this: at least check whether this codepath is ever reached
+                seq = ops.translate(seq, -ops.min_time(seq, seconds=False), seconds=False)
+                assert ops.min_time(seq, seconds=False) == 0
+
+                # if notes in the chunk exceed vocab max time, skip it
+                if ops.max_time(seq, seconds=False) >= vocab['config']['max_time']:
                     continue
 
                 seq = z + seq
