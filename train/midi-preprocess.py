@@ -32,7 +32,9 @@ def convert_midi(filename, harmonize, output=None, debug=False):
         return 1
 
     if output:
-        output_filename = os.path.join(output, os.path.basename(filename) + ".compound.txt")
+        output_folder = os.path.join(output, os.path.basename(os.path.dirname(filename)))
+        os.makedirs(output_folder, exist_ok=True)
+        output_filename = os.path.join(output_folder, os.path.basename(filename) + ".compound.txt")
     else:
         output_filename = f"{filename}.compound.txt"
 
