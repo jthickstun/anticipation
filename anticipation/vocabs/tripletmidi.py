@@ -45,9 +45,7 @@ SPECIAL_OFFSET = ANOTE_OFFSET + MAX_NOTE
 SEPARATOR = SPECIAL_OFFSET
 AUTOREGRESS = SPECIAL_OFFSET + 1
 ANTICIPATE = SPECIAL_OFFSET + 2
-PAD = SPECIAL_OFFSET + 3
-INSTR_OFFSET = SPECIAL_OFFSET + 4        # instrument-conditioning tokens
-VOCAB_SIZE = INSTR_OFFSET+MAX_INSTR
+VOCAB_SIZE = ANTICIPATE+1
 
 vocab = {
     'config' : {
@@ -60,7 +58,6 @@ vocab = {
     },
 
     'separator' : SEPARATOR,
-    'pad' : PAD,
     'rest' : REST,
 
     'task' : {
@@ -73,7 +70,6 @@ vocab = {
     'duration_offset' : DUR_OFFSET,
     'note_offset' : NOTE_OFFSET,
     'special_offset' : SPECIAL_OFFSET,
-    'instrument_offset' : INSTR_OFFSET
 }
 
 if __name__ == '__main__':
@@ -87,12 +83,6 @@ if __name__ == '__main__':
     print('MIDI Training Sequence Format')
     print(80*'-')
     print('Sequence Separator :', SEPARATOR)
-    print('Special Block:', SPECIAL_OFFSET)
-    print('  -> generation tasks:')
-    print('    * autoregress flag :', AUTOREGRESS)
-    print('    * anticipate flag :', ANTICIPATE)
-    print('  * pad token:', PAD)
-    print('  -> instrument control offset', INSTR_OFFSET)
     print('Midi Event Block:', EVENT_OFFSET)
     print('  -> arrival time offset :', TIME_OFFSET)
     print('  -> duration offset :', DUR_OFFSET)
@@ -102,3 +92,7 @@ if __name__ == '__main__':
     print('  -> arrival time offset :', ATIME_OFFSET)
     print('  -> duration offset :', ADUR_OFFSET)
     print('  -> note offset :', ANOTE_OFFSET)
+    print('Special Block:', SPECIAL_OFFSET)
+    print('  -> generation tasks:')
+    print('    * autoregress flag :', AUTOREGRESS)
+    print('    * anticipate flag :', ANTICIPATE)
