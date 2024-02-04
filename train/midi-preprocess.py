@@ -53,13 +53,14 @@ def main(args):
             + glob(args.dir + '/**/*.midi', recursive=True)
     
     harmonize = args.harmonize
+    debug = args.debug
     if args.output:
         output = args.output
     else:
         output = None
     print(f'Preprocessing {len(filenames)} files with {PREPROC_WORKERS} workers')
     with ProcessPoolExecutor(max_workers=PREPROC_WORKERS) as executor:
-        partial_convert_midi = partial(convert_midi, harmonize=harmonize, output=output)
+        partial_convert_midi = partial(convert_midi, harmonize=harmonize, output=output, debug=debug)
         results = list(tqdm(executor.map(partial_convert_midi, filenames), desc='Preprocess', total=len(filenames)))
 
     discards = round(100*sum(results)/float(len(filenames)),2)
@@ -70,4 +71,5 @@ if __name__ == '__main__':
     parser.add_argument('dir', help='directory containing .mid files for training')
     parser.add_argument('--output', help='optional output directory, otherwise done in place')
     parser.add_argument('--harmonize', action='store_true', help="harmonize and store chords with program code specified by vocab")
+    parser.add_argument('--debug', action='store_true', help="verbose debug messages")
     main(parser.parse_args())
