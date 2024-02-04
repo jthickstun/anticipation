@@ -15,6 +15,9 @@ import os
 
 def convert_midi(filename, harmonize, output=None, debug=True):
     try:
+        if debug:
+            print('Processing file: ', filename)
+            
         tokens, harmonized = midi_to_compound_new(filename, vocab, harmonize, debug=debug)
         # tokens = midi_to_compound(filename, vocab, debug=debug)
 
