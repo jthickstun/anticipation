@@ -17,7 +17,7 @@ def convert_midi(filename, harmonize, output=None, debug=True):
     try:
         if debug:
             print('Processing file: ', filename)
-            
+
         tokens, harmonized = midi_to_compound_new(filename, vocab, harmonize, debug=debug)
         # tokens = midi_to_compound(filename, vocab, debug=debug)
 
@@ -37,6 +37,9 @@ def convert_midi(filename, harmonize, output=None, debug=True):
         output_filename = f"{filename}.compound.txt"
 
     with open(output_filename, 'w') as f:
+        if debug:
+            print(f'Writing {filename} to {output_filename}')
+
         f.write(' '.join(str(tok) for tok in tokens))
 
     return 0
