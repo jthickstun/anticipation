@@ -55,8 +55,8 @@ def main(args):
         output = args.output
     else:
         output = None
-    print(f'Preprocessing {len(filenames)} files with {PREPROC_WORKERS} workers')
-    with ProcessPoolExecutor(max_workers=PREPROC_WORKERS) as executor:
+    print(f'Preprocessing {len(filenames)} files with {1} workers')
+    with ProcessPoolExecutor(max_workers=1) as executor:
         partial_convert_midi = partial(convert_midi, harmonize=harmonize, output=output)
         results = list(tqdm(executor.map(partial_convert_midi, filenames), desc='Preprocess', total=len(filenames)))
 
