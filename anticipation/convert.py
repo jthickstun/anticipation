@@ -157,7 +157,8 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
         if len(mtk_midi_chords.instruments[0].notes) > 0:
             harmonized = 1
         midi.instruments.extend(mtk_midi_chords.instruments)
-        midi.max_tick = max(midi.max_tick, max([max([n.end for n in i.notes]) for i in midi.instruments]) + 1)
+    
+    midi.max_tick = max([max([n.end for n in i.notes]) for i in midi.instruments])
 
     tokens = []
     ticks_to_sec_map = midi.get_tick_to_time_mapping()
