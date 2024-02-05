@@ -146,6 +146,9 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
     time_res = vocab['config']['midi_quantization']
     # midi.ticks_per_beat = time_res
 
+    # make max_ticks safe
+    midi.max_tick = max([max([n.end for n in i.notes]) for i in midi.instruments])
+
     if harmonize:
         mtk_midi_copy = deepcopy(midi)
         # add chords as markers
@@ -157,8 +160,8 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
         if len(mtk_midi_chords.instruments[0].notes) > 0:
             harmonized = 1
         midi.instruments.extend(mtk_midi_chords.instruments)
-    
-    midi.max_tick = max([max([n.end for n in i.notes]) for i in midi.instruments])
+        # update max_ticks in case chords extend beyond original track
+        midi.max_tick = max([max([n.end for n in i.notes]) for i in midi.instruments])
 
     tokens = []
     ticks_to_sec_map = midi.get_tick_to_time_mapping()
