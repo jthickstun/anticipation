@@ -17,6 +17,10 @@ def convert_midi(filename, harmonize, output=None, debug=False):
     try:
         if debug:
             print('Processing file: ', filename)
+        
+        # Log the filename to a file
+        with open("preprocessed_files.txt", "a") as log_file:
+            log_file.write(filename + "\n")
 
         tokens, harmonized = midi_to_compound_new(filename, vocab, harmonize, debug=debug)
         # tokens = midi_to_compound(filename, vocab, debug=debug)
