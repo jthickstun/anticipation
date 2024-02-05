@@ -196,15 +196,10 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                     seq = concatenated_tokens[0:EVENT_SIZE*M]
                     concatenated_tokens = concatenated_tokens[EVENT_SIZE*M:]
 
-                    try:
-                        # relativize time to the sequence
-                        seq = ops.translate(
-                                seq, -ops.min_time(seq, seconds=False), seconds=False)
-
-                        # should have relativized to zero
-                        assert ops.min_time(seq, seconds=False) == 0
-                    except OverflowError:
-                        # relativized time exceeds MAX_TIME
+                    # relativize time to the context
+                    seq = ops.translate(seq, -ops.min_time(seq, seconds=False), seconds=False)
+                    assert ops.min_time(seq, seconds=False) == 0
+                    if ops.max_time(seq, seconds=False) >= MAX_TIME:
                         stats[3] += 1
                         continue
 

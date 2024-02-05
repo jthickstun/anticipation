@@ -223,8 +223,9 @@ def min_time(tokens, seconds=True, instr=None):
 def max_time(tokens, seconds=True, instr=None):
     mt = 0
     for time, dur, note in zip(tokens[0::3],tokens[1::3],tokens[2::3]):
-        # stop calculating at sequence separator
-        if note == SEPARATOR: break
+        # keep checking for max_time, even if it appears after a separator
+        # (this is important because we use this check for vocab overflow in tokenization)
+        if note == SEPARATOR: continue
 
         if note < CONTROL_OFFSET:
             time -= TIME_OFFSET
