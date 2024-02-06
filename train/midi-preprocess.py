@@ -18,12 +18,15 @@ def convert_midi(filename, harmonize, output=None, debug=False):
         if debug:
             print('Processing file: ', filename)
         
-        # Log the filename to a file
-        with open("preprocessed_files.txt", "a") as log_file:
-            log_file.write(filename + "\n")
+        output_filename = 'tmp/' + os.path.basename(filename) + ".txt"
+        os.makedirs('tmp', exist_ok=True)
+        with open(output_filename, 'w') as f:
+            f.write('1')
 
         tokens, harmonized = midi_to_compound_new(filename, vocab, harmonize, debug=debug)
         # tokens = midi_to_compound(filename, vocab, debug=debug)
+
+        os.remove(output_filename)
 
         if debug and harmonized == 0:
             print('Failed to harmonize: ', filename)
@@ -55,7 +58,7 @@ def main(args):
     print(f'Midi time quantization is: {vocab["config"]["midi_quantization"]}')
     filenames = glob(args.dir + '/**/*.mid', recursive=True) \
             + glob(args.dir + '/**/*.midi', recursive=True)
-    
+     
     harmonize = args.harmonize
     debug = args.debug
     if args.output:
