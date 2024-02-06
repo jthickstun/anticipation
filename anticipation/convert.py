@@ -148,6 +148,10 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
 
     # make max_ticks safe
     midi.max_tick = max([max([n.end for n in i.notes]) for i in midi.instruments])
+    
+    # would a better cutoff be derived from MAX_TRACK_TIME_IN_SECONDS?
+    if midi.max_tick > 1e7:
+        raise ValueError
 
     if harmonize:
         mtk_midi_copy = deepcopy(midi)
