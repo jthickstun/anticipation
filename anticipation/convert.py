@@ -148,9 +148,18 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
 
     # make max_ticks safe
     midi.max_tick = max([max([n.end for n in i.notes]) for i in midi.instruments])
+
+    # make tempo changes safe
+    midi.tempo_changes = [tc for tc in midi.tempo_changes if tc.time < midi.max_tick]
     
+    # make time signature changes safe   
+    midi.time_signature_changes = [ts for ts in midi.time_signature_changes if ts.time < midi.max_tick]
+
     # would a better cutoff be derived from MAX_TRACK_TIME_IN_SECONDS?
     if midi.max_tick > 1e7:
+        raise ValueError
+
+    if len(midi.time_signature_changes) > 200: # too hard to harmonize
         raise ValueError
 
     if harmonize:
@@ -175,7 +184,7 @@ def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
             # sanity check: negative time?
             if note.start < 0:
                 raise ValueError
-            
+
             # special case: channel 9 corresponds to is.drum flag!
             instr = 128 if inst.is_drum else inst.program
 
