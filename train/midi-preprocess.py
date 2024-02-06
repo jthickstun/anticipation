@@ -18,8 +18,8 @@ def convert_midi(filename, harmonize, output=None, debug=False):
         if debug:
             print('Processing file: ', filename)
         
-        output_filename = 'tmp/' + os.path.basename(filename) + ".txt"
         os.makedirs('tmp', exist_ok=True)
+        output_filename = 'tmp/' + os.path.basename(filename) + ".txt"
         with open(output_filename, 'w') as f:
             f.write('1')
 
@@ -35,6 +35,8 @@ def convert_midi(filename, harmonize, output=None, debug=False):
         if debug:
             print('Failed to process: ', filename)
             print(traceback.format_exc())
+
+        os.remove(output_filename)
 
         return 1
 
@@ -58,7 +60,7 @@ def main(args):
     print(f'Midi time quantization is: {vocab["config"]["midi_quantization"]}')
     filenames = glob(args.dir + '/**/*.mid', recursive=True) \
             + glob(args.dir + '/**/*.midi', recursive=True)
-     
+    
     harmonize = args.harmonize
     debug = args.debug
     if args.output:
