@@ -13,7 +13,7 @@ datafile=$out_directory/"$dataset"."$task"."$split".txt
 
 tmpdir="tmp_$(date +%Y%m%d_%H%M%S)"
 mkdir -p $out_directory/$tmpdir
-python tokenize-new.py $data_directory $out_directory/$tmpdir $task $context --workers $workers
+python -m train.tokenize-new $data_directory $out_directory/$tmpdir $task $context --workers $workers
 
 echo "Writing to datafile: $datafile"
 
