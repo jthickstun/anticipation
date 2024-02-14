@@ -133,7 +133,7 @@ def interarrival_to_midi(tokens, debug=False):
 
     return mid
 
-def midi_to_compound_new(midifile, vocab, harmonize, debug=False):
+def midi_to_compound_new(midifile, vocab, harmonize=False, debug=False):
     # This function uses miditoolkit instead of mido objects to satisfy chorder's requirements
 
     harmonized = 0
@@ -496,7 +496,7 @@ def events_to_midi(tokens, vocab, debug=False):
     return compound_to_midi(events_to_compound(tokens, debug=debug), vocab, debug=debug)
 
 def midi_to_events(midifile, debug=False):
-    return compound_to_events(midi_to_compound(midifile, debug=debug), vocab, debug=debug)
+    return compound_to_events(midi_to_compound(midifile, vocab, debug=debug), vocab)
 
 def midi_to_mm(midifile, vocab, debug=False):
     return compound_to_mm(midi_to_compound(midifile, vocab, debug=debug), vocab)
