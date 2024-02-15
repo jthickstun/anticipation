@@ -121,8 +121,8 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
     history = tokens.copy()
     prefix = None
 
-    if (len(tokens) + len(z_start) + 1) > 1024:
-        lookback = len(tokens) - (1024 - len(z_cont) - 1)
+    if (len(tokens) + len(z_start) + 1) >= 1024:
+        lookback = len(tokens) - (1024 - len(z_cont) - 3) # we generate three tokens at a time
         prefix = z_cont
     else:
         lookback = max(len(tokens) - (1024 - len(z_start) - 1), 0)
