@@ -157,13 +157,16 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
 
     return new_token
 
-def generate(model, start_time, end_time, inputs=None, controls=None, instruments=None, top_p=1.0, temperature=1.0, masked_instrs=[], debug=False, delta=DELTA*TIME_RESOLUTION):
+def generate(model, start_time, end_time, inputs=None, chord_controls=None, human_controls=None, instruments=None, top_p=1.0, temperature=1.0, masked_instrs=[], debug=False, chord_delta=DELTA*TIME_RESOLUTION, human_delta=HUMAN_DELTA*TIME_RESOLUTION):
     
     if inputs is None:
         inputs = []
 
-    if controls is None:
-        controls = []
+    if chord_controls is None:
+        chord_controls = []
+
+    if human_controls is None:
+        human_controls = []
 
     if instruments is None:
         raise ValueError('Must provide instrument controls')
@@ -180,20 +183,24 @@ def generate(model, start_time, end_time, inputs=None, controls=None, instrument
         print('Future')
         ops.print_tokens(future)
 
-    # clip controls that preceed the sequence
-    controls = ops.clip(controls, DELTA, ops.max_time(controls, seconds=False), clip_duration=False)
+    # clip chord controls that preceed the sequence
+    chord_controls = ops.clip(chord_controls, DELTA, ops.max_time(chord_controls, seconds=False), clip_duration=False)
 
     if debug:
-        print('Controls')
-        ops.print_tokens(controls)
+        print('Chord Controls')
+        ops.print_tokens(chord_controls)
+        print('Human Controls')
+        ops.print_tokens(human_controls)
 
-    task = [ANTICIPATE] if len(controls) > 0 or len(future) > 0 else [AUTOREGRESS]
+    task = [ANTICIPATE] if len(chord_controls) > 0 or len(future) > 0 or len(human_controls) > 0 else [AUTOREGRESS]
     if debug:
         print('AR Mode' if task[0] == AUTOREGRESS else 'AAR Mode')
 
-    # interleave the controls with the events
-    tokens, controls = ops.anticipate(prompt, ops.sort(controls + [CONTROL_OFFSET+token for token in future]))
-
+    # interleave the chord_controls and human_controls with the events
+    # note that we merge future with chord_controls, as they are both anticipated
+    # tokens, controls = ops.anticipate(prompt, ops.sort(controls + [CONTROL_OFFSET+token for token in future]))
+    tokens, chord_controls, human_controls = ops.anticipate_and_anti_anticipate(prompt, ops.sort(chord_controls + [CONTROL_OFFSET+token for token in future]), human_controls, chord_delta=chord_delta, human_delta=human_delta)
+    
     if debug:
         print('Prompt')
         ops.print_tokens(tokens)
@@ -203,29 +210,54 @@ def generate(model, start_time, end_time, inputs=None, controls=None, instrument
         print('Current time:', current_time)
 
     with tqdm(range(end_time-start_time)) as progress:
-        if controls:
-            atime, adur, anote = controls[0:3]
-            anticipated_tokens = controls[3:]
+        if chord_controls:
+            atime, adur, anote = chord_controls[0:3]
+            anticipated_tokens = chord_controls[3:]
             anticipated_time = atime - ATIME_OFFSET
         else:
             # nothing to anticipate
             anticipated_time = math.inf
 
-        while True:
-            while current_time >= anticipated_time - delta:
-                tokens.extend([atime, adur, anote])
-                if debug:
-                    note = anote - ANOTE_OFFSET
-                    instr = note//2**7
-                    print('A', atime - ATIME_OFFSET, adur - ADUR_OFFSET, instr, note - (2**7)*instr)
+        if human_controls:
+            aatime, aadur, aanote = human_controls[0:3]
+            anti_anticipated_tokens = human_controls[3:]
+            anti_anticipated_time = aatime - ATIME_OFFSET
+        else:
+            # nothing to anti-anticipate
+            anti_anticipated_time = math.inf
 
-                if len(anticipated_tokens) > 0:
-                    atime, adur, anote = anticipated_tokens[0:3]
-                    anticipated_tokens = anticipated_tokens[3:]
-                    anticipated_time = atime - ATIME_OFFSET
+        while True:
+            while (current_time >= anticipated_time - chord_delta) or (current_time >= anti_anticipated_time - human_delta):
+                if (anticipated_time - chord_delta <= anti_anticipated_time - human_delta):
+                    tokens.extend([atime, adur, anote])
+
+                    if debug:
+                        note = anote - ANOTE_OFFSET
+                        instr = note//2**7
+                        print('A', atime - ATIME_OFFSET, adur - ADUR_OFFSET, instr, note - (2**7)*instr)
+
+                    if len(anticipated_tokens) > 0:
+                        atime, adur, anote = anticipated_tokens[0:3]
+                        anticipated_tokens = anticipated_tokens[3:]
+                        anticipated_time = atime - ATIME_OFFSET
+                    else:
+                        # nothing more to anticipate
+                        anticipated_time = math.inf
                 else:
-                    # nothing more to anticipate
-                    anticipated_time = math.inf
+                    tokens.extend([aatime, aadur, aanote])
+
+                    if debug:
+                        note = aanote - ANOTE_OFFSET
+                        instr = note//2**7
+                        print('A', aatime - ATIME_OFFSET, aadur - ADUR_OFFSET, instr, note - (2**7)*instr)
+
+                    if len(anti_anticipated_tokens) > 0:
+                        aatime, aadur, aanote = anti_anticipated_tokens[0:3]
+                        anti_anticipated_tokens = anti_anticipated_tokens[3:]
+                        anti_anticipated_time = aatime - ATIME_OFFSET
+                    else:
+                        # nothing more to anti-anticipate
+                        anti_anticipated_time = math.inf
 
             new_token = add_token(model, task, tokens, instruments, top_p, temperature, max(start_time,current_time), masked_instrs, debug)
             new_time = new_token[0] - TIME_OFFSET
