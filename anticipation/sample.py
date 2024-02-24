@@ -115,7 +115,7 @@ def add_token(model, task, tokens, instruments, top_p, temperature, current_time
     assert len(tokens) % 3 == 0
 
     # get control global control prefix for the beginning of a sequence and the continuation of a sequence
-    task_string = 'autoregress' if task == AUTOREGRESS else 'anticipate'
+    task_string = 'autoregress' if task == [AUTOREGRESS] else 'anticipate'
     z_start, z_cont = control_prefix(instruments, task_string, vocab)
 
     history = tokens.copy()
@@ -192,7 +192,8 @@ def generate(model, start_time, end_time, inputs=None, chord_controls=None, huma
         print('Human Controls')
         ops.print_tokens(human_controls)
 
-    task = [ANTICIPATE] if len(chord_controls) > 0 or len(future) > 0 or len(human_controls) > 0 else [AUTOREGRESS]
+    # task = [ANTICIPATE] if len(chord_controls) > 0 or len(future) > 0 or len(human_controls) > 0 else [AUTOREGRESS]
+    task = [AUTOREGRESS] # always autoregress for now!
     if debug:
         print('AR Mode' if task[0] == AUTOREGRESS else 'AAR Mode')
 
