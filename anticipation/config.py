@@ -32,6 +32,7 @@ MAX_TRACK_INSTR = 16               # exclude tracks with large numbers of instru
 MAX_TRACK_TIME_IN_SECONDS = 3600   # exclude very long tracks (longer than 1 hour)
 MIN_TRACK_TIME_IN_SECONDS = 10     # exclude very short tracks (less than 10 seconds)
 MIN_TRACK_EVENTS = 100             # exclude very short tracks (less than 100 events)
+MAX_TRACK_EVENTS = 200000          # exclude very long tracks (more than a 200000 events)
 
 # derived quantities
 
