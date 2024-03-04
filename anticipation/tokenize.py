@@ -39,14 +39,14 @@ def extract_spans(all_events, rate):
     return events, controls
 
 
-ANTICIPATION_RATES = 10
-def extract_random(all_events, rate):
+def extract_random(all_events, rates):
     events = []
     controls = []
+    rate = np.random.randint(rates)
     for time, dur, note in zip(all_events[0::3],all_events[1::3],all_events[2::3]):
         assert(note not in [SEPARATOR, REST]) # shouldn't be in the sequence yet
 
-        if np.random.random() < rate/float(ANTICIPATION_RATES):
+        if np.random.random() < rate/float(rates):
             # mark this event as a control
             controls.extend([CONTROL_OFFSET+time, CONTROL_OFFSET+dur, CONTROL_OFFSET+note])
         else:
@@ -76,6 +76,10 @@ def maybe_tokenize(compound_tokens):
     # skip sequences with very few events
     if len(compound_tokens) < COMPOUND_SIZE*MIN_TRACK_EVENTS:
         return None, None, 1 # short track
+
+    # skip sequences with outrageously many events
+    if len(compound_tokens) > COMPOUND_SIZE*MAX_TRACK_EVENTS:
+        return None, None, 2 # long track
 
     events, truncations = compound_to_events(compound_tokens, stats=True)
     end_time = ops.max_time(events, seconds=False)
@@ -167,8 +171,7 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                     events, controls = extract_spans(all_events, lmbda)
                 elif k % 10 < 6:
                     # random augmentation
-                    r = np.random.randint(1,ANTICIPATION_RATES)
-                    events, controls = extract_random(all_events, r)
+                    events, controls = extract_random(all_events, 10)
                 else:
                     if len(instruments) > 1:
                         # instrument augmentation: at least one, but not all instruments

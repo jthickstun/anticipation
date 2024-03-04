@@ -45,7 +45,9 @@ SPECIAL_OFFSET = ANOTE_OFFSET + MAX_NOTE
 SEPARATOR = SPECIAL_OFFSET
 AUTOREGRESS = SPECIAL_OFFSET + 1
 ANTICIPATE = SPECIAL_OFFSET + 2
-VOCAB_SIZE = ANTICIPATE+1
+AUTO_TR = SPECIAL_OFFSET + 3
+ANTI_TR = SPECIAL_OFFSET + 4
+VOCAB_SIZE = ANTI_TR+1
 
 vocab = {
     'config' : {
@@ -63,6 +65,8 @@ vocab = {
     'task' : {
         'autoregress' : AUTOREGRESS,
         'anticipate' : ANTICIPATE,
+        'autoregress_transcript' : AUTO_TR,
+        'anticipate_transcript' : ANTI_TR,
     },
 
     'event_offset' : EVENT_OFFSET,
@@ -94,5 +98,7 @@ if __name__ == '__main__':
     print('  -> note offset :', ANOTE_OFFSET)
     print('Special Block:', SPECIAL_OFFSET)
     print('  -> generation tasks:')
-    print('    * autoregress flag :', AUTOREGRESS)
-    print('    * anticipate flag :', ANTICIPATE)
+    print('    * autoregress:', AUTOREGRESS)
+    print('    * anticipate:', ANTICIPATE)
+    print('    * autoregress transcript:', AUTO_TR)
+    print('    * anticipate transcript :', ANTI_TR)
