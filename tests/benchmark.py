@@ -1,18 +1,16 @@
-from argparse import ArgumentParser
-from tqdm import tqdm
-
-from transformers import AutoModelForCausalLM
-
-import torch
-from anticipation.sample import generate
-from anticipation import ops
-
 import os
 import datetime
 import time
-
 import pickle
 
+from argparse import ArgumentParser
+from tqdm import tqdm
+
+import torch
+from transformers import AutoModelForCausalLM
+
+from anticipation.sample import generate
+from anticipation import ops
 
 def main(args):
     # initialize the model and tokenizer
@@ -37,15 +35,23 @@ def main(args):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
+    log_file_path = os.path.join(folder_path, "log.txt")
+
+    with open(log_file_path, 'a') as f:
+        f.write(f'Model: {args.model}\n')
+        f.write(f'Timestamp: {timestamp}\n')
+        f.write(f'Number of sequences to generate: {numSequences}\n')
+        f.write(f'Generation interval length: {interval} sec.\n')
+        f.write(f'Number of intervals to generate per sequence: {numIntervals}\n')
+        f.write('\n')
+
     # generate sequences
     for s in range(numSequences):
-        print(s)
         times = {}
         tokens = []
         start_time = 0
         end_time = interval
         for i in range(numIntervals):
-            print(i)
             start_clock = time.time()
             tokens = generate(model, inputs=tokens, start_time=start_time, end_time=end_time, top_p=.98)
             end_clock = time.time()
@@ -63,8 +69,6 @@ def main(args):
             end_time += interval
         
         stats.append(times)
-
-        log_file_path = os.path.join(folder_path, "log.txt")
         
         with open(log_file_path, 'a') as f:
             f.write(f'Sample {s+1} of {numSequences}. Generation interval length: {interval} sec.\n')
