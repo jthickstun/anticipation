@@ -63,7 +63,7 @@ def future_logits(logits, curtime):
 def instr_logits(logits, full_history):
     """ don't sample more than 16 instruments """
     instrs = ops.get_instruments(full_history)
-    if len(instrs) < 16:
+    if len(instrs) < 15: # 16 - 1 to account for the reserved drum track
         return logits
 
     for instr in range(MAX_INSTR):
