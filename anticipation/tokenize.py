@@ -5,6 +5,7 @@ Top-level functions for preprocessing data to be used for training.
 from tqdm import tqdm
 
 import numpy as np
+import random
 
 from anticipation import ops
 from anticipation.config import *
@@ -156,7 +157,9 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
             end_time = ops.max_time(all_events, seconds=False)
 
             # different random augmentations
-            for k in range(augment_factor):
+            for _ in range(augment_factor):
+                k = random.randint(0, 9)
+
                 if k % 10 == 0:
                     # no augmentation
                     events = all_events.copy()
@@ -179,6 +182,8 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
                         # no augmentation
                         events = all_events.copy()
                         controls = []
+                        # flag as autoregress via k
+                        k = 0
 
                 if len(concatenated_tokens) == 0:
                     z = ANTICIPATE if k % 10 != 0 else AUTOREGRESS
