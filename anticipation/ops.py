@@ -256,6 +256,7 @@ def get_instruments(tokens):
         instr = note//2**7
         instruments[instr] += 1
 
+    # (instrument type, num instances)
     return instruments
 
 

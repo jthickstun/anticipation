@@ -135,7 +135,7 @@ def tokenize_ia(datafiles, output, augment_factor, idx=0, debug=False):
     return (seqcount, rest_count, stats[0], stats[1], stats[2], stats[3], all_truncations)
 
 
-def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
+def tokenize(datafiles, output, augment_factor, idx=0, debug=False, include_original: bool = True, do_random_augmentation: bool = True, do_instrument_augmentation: bool = True, do_span_augmentation: bool = True):
     tokens = []
     all_truncations = 0
     seqcount = rest_count = 0
@@ -154,31 +154,47 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
 
             instruments = list(ops.get_instruments(all_events).keys())
             end_time = ops.max_time(all_events, seconds=False)
-
             # different random augmentations
+            # pp 24
+            # 10% without anticipation (standard AR)
+            # 10% span anticipation
+            # 40% instrument anticipation
+            # 40% random anticipation
             for k in range(augment_factor):
                 if k % 10 == 0:
-                    # no augmentation
-                    events = all_events.copy()
-                    controls = []
-                elif k % 10 == 1:
-                    # span augmentation
-                    lmbda = .05
-                    events, controls = extract_spans(all_events, lmbda)
-                elif k % 10 < 6:
-                    # random augmentation
-                    r = np.random.randint(1,ANTICIPATION_RATES)
-                    events, controls = extract_random(all_events, r)
-                else:
-                    if len(instruments) > 1:
-                        # instrument augmentation: at least one, but not all instruments
-                        u = 1+np.random.randint(len(instruments)-1)
-                        subset = np.random.choice(instruments, u, replace=False)
-                        events, controls = extract_instruments(all_events, subset)
-                    else:
+                    if include_original:
                         # no augmentation
                         events = all_events.copy()
                         controls = []
+                    else:
+                        continue
+                elif k % 10 == 1:
+                    # span augmentation
+                    if do_span_augmentation:
+                        lmbda = .05
+                        events, controls = extract_spans(all_events, lmbda)
+                    else:
+                        continue
+                elif k % 10 < 6:
+                    # random augmentation
+                    if do_random_augmentation:
+                        r = np.random.randint(1,ANTICIPATION_RATES)
+                        events, controls = extract_random(all_events, r)
+                    else:
+                        continue
+                else:
+                    if do_instrument_augmentation:
+                        if len(instruments) > 1:
+                            # instrument augmentation: at least one, but not all instruments
+                            u = 1+np.random.randint(len(instruments)-1)
+                            subset = np.random.choice(instruments, u, replace=False)
+                            events, controls = extract_instruments(all_events, subset)
+                        else:
+                            # no augmentation
+                            events = all_events.copy()
+                            controls = []
+                    else:
+                        continue
 
                 if len(concatenated_tokens) == 0:
                     z = ANTICIPATE if k % 10 != 0 else AUTOREGRESS
@@ -216,4 +232,8 @@ def tokenize(datafiles, output, augment_factor, idx=0, debug=False):
         fmt = 'Processed {} sequences (discarded {} tracks, discarded {} seqs, added {} rest tokens)'
         print(fmt.format(seqcount, stats[0]+stats[1]+stats[2], stats[3], rest_count))
 
+    # concatenated_tokens may be non-empty by the time this function returns
+    # it will contain any tokens that do not exactly fit in the context size
+    # not a big deal in a large dataset
+    print("Token buffer had remaining: ", len(concatenated_tokens))
     return (seqcount, rest_count, stats[0], stats[1], stats[2], stats[3], all_truncations)
