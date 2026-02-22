@@ -6,6 +6,8 @@ Their functionality is the same as v1 ops unless stated otherwise.
 from collections import defaultdict
 from typing import Optional, Union, Iterator
 
+import numpy as np
+
 from anticipation.v2.config import AnticipationV2Settings
 from anticipation.v2.types import Token
 
@@ -271,8 +273,6 @@ def streaming_anticipate(
         )
 
     delta_ticks = settings.delta * settings.time_resolution
-    event_time = 0
-
     curr_control = next(controls, None)
     if curr_control is None:
         # no controls exist, just iterate over events
@@ -281,25 +281,28 @@ def streaming_anticipate(
 
     first_control_time = curr_control[0] - settings.vocab.ATIME_OFFSET
     control_time = first_control_time
+    num_ticks_seen = 0
 
     for cur_event in events:
         if len(cur_event) == 3:
             # a triple
             time, dur, note = cur_event
-            while event_time >= control_time - delta_ticks:
-                yield curr_control
-                curr_control = next(controls, None)
-                control_time = (
-                    curr_control[0] - settings.vocab.ATIME_OFFSET
-                    if curr_control is not None
-                    else float("inf")
-                )
-            assert note < settings.vocab.CONTROL_OFFSET
             event_time = time - settings.vocab.TIME_OFFSET
-            yield time, dur, note
+            assert note < settings.vocab.CONTROL_OFFSET
         else:
-            # a tick, just return it
-            yield cur_event
+            # a tick
+            event_time = num_ticks_seen * settings.tick_token_frequency_in_midi_ticks
+            num_ticks_seen += 1
+
+        while event_time >= control_time - delta_ticks:
+            yield curr_control
+            curr_control = next(controls, None)
+            control_time = (
+                curr_control[0] - settings.vocab.ATIME_OFFSET
+                if curr_control is not None
+                else float("inf")
+            )
+        yield cur_event
 
 
 def streaming_add_ticks(
@@ -348,9 +351,52 @@ def streaming_relativize_to_tick(
                 next_element[1],
                 next_element[2],
             )
+            # do not catch on the time part of the tuple... in lakh there are
+            # some samples that are SO LONG that their un-relativized times are
+            # pushed into the control token space
+            if next_element[1] >= settings.vocab.CONTROL_OFFSET:
+                # don't let the time be over-subtracted
+                assert to_add[0] >= settings.vocab.CONTROL_OFFSET
         else:
             raise ValueError(
                 f"Incorrect length of event tuple. Must be 1 or 3. Got: {len(next_element)}"
             )
 
         yield to_add
+
+
+def extract_spans_v1_style(all_events, settings: AnticipationV2Settings):
+    events = []
+    controls = []
+    span = True
+    next_span = end_span = settings.vocab.TIME_OFFSET
+    for time, dur, note in zip(all_events[0::3], all_events[1::3], all_events[2::3]):
+        # shouldn't be in the sequence yet
+        assert note not in [settings.vocab.SEPARATOR, settings.vocab.TICK]
+
+        # end of an anticipated span; decide when to do it again (next_span)
+        if span and time >= end_span:
+            span = False
+            next_span = time + int(
+                settings.time_resolution
+                * np.random.exponential(1.0 / settings.span_anticipation_lambda)
+            )
+
+        # anticipate a 3-second span
+        if (not span) and time >= next_span:
+            span = True
+            end_span = time + settings.delta * settings.time_resolution
+
+        if span:
+            # mark this event as a control
+            controls.extend(
+                [
+                    settings.vocab.CONTROL_OFFSET + time,
+                    settings.vocab.CONTROL_OFFSET + dur,
+                    settings.vocab.CONTROL_OFFSET + note,
+                ]
+            )
+        else:
+            events.extend([time, dur, note])
+
+    return events, controls

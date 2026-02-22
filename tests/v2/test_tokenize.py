@@ -253,9 +253,7 @@ def test_tokenize_v2_lakh_span_anticipation(
     stats = v2_tokenize([lmd_0_example_1_midi_path], tokens_to, settings)
     assert not stats.ignored_files
     assert settings.vocab.TICK == 17612
-    parsed_events = Event.from_token_seq(
-        [x for b in tokens_to for x in b], settings
-    )  # [:2000]
+    parsed_events = Event.from_token_seq([x for b in tokens_to for x in b], settings)
     get_figure_and_open(
         events=parsed_events,
         delta=settings.delta,

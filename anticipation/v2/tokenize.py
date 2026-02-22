@@ -419,7 +419,7 @@ def _make_sequences(
     for _ in range(settings.num_span_anticipation_augmentations_per_midi_file):
         # TODO: not done w this yet
         control_prefix, token_iterator = _get_span_augmentation(
-            tokenized_midi.events, tokenized_midi.end_time_in_ticks, settings
+            tokenized_midi.events, settings
         )
         buf.add_tokenized_file(control_prefix, token_iterator)
 
@@ -486,13 +486,15 @@ def _get_augmentation_instrument(
 
 def _get_span_augmentation(
     tokens: list[Token],
-    end_time_in_ticks: int,
     settings: AnticipationV2Settings,
 ):
     assert len(tokens) % 3 == 0, "bad length"
     # for now, I am leaving the implementation exactly as it was in v1
     # EXCEPT for how the SEPARATE token is handled
-    events, controls = v1_extract_spans(tokens, rate=settings.span_anticipation_lambda)
+    events, controls = v2_ops.extract_spans_v1_style(tokens, settings)
+    assert len(events) % 3 == 0
+    assert len(controls) % 3 == 0
+
     events = v2_ops.streaming_add_ticks(events, settings)
     control_stream = (controls[i : i + 3] for i in range(0, len(controls), 3))
     stream = v2_ops.streaming_anticipate(events, control_stream, settings)
