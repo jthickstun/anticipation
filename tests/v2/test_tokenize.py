@@ -10,6 +10,7 @@ from anticipation.v2.config import AnticipationV2Settings, Vocab
 from anticipation.v2.tokenize import tokenize as v2_tokenize
 from anticipation.v2.tokenize import MIDIFileIgnoredReason, TokenizationStatSummary
 from anticipation.v2.io import TokenSequenceBinaryFile
+from anticipation.v2.util import set_seed
 
 from tests.util.entities import Event, EventSpecialCode, get_note_instrument_token, Note
 from tests.util.visualize_sequence import get_figure_and_open
@@ -229,6 +230,38 @@ def test_tokenize_with_ticks_for_lakh_ar(lmd_0_example_1_midi_path: Path) -> Non
         time_resolution=settings.time_resolution,
         path=(VISUALIZATIONS_PATH / f"ar_with_ticks_lakh_0.html"),
         auto_open=False,
+    )
+
+
+def test_tokenize_v2_lakh_span_anticipation(
+    lmd_0_example_1_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    set_seed(48)
+
+    tokens_to = []
+    settings = AnticipationV2Settings(
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        num_random_anticipation_augmentations_per_midi_file=0,
+        tick_token_frequency_in_midi_ticks=100,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+    )
+    stats = v2_tokenize([lmd_0_example_1_midi_path], tokens_to, settings)
+    assert not stats.ignored_files
+    assert settings.vocab.TICK == 17612
+    parsed_events = Event.from_token_seq(
+        [x for b in tokens_to for x in b], settings
+    )  # [:2000]
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / f"anticipated_span_v2.html"),
+        auto_open=True,
     )
 
 

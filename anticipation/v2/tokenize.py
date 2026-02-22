@@ -418,11 +418,10 @@ def _make_sequences(
     # 3. span anticipation
     for _ in range(settings.num_span_anticipation_augmentations_per_midi_file):
         # TODO: not done w this yet
-        buf.add_tokenized_file(
-            _get_span_augmentation(
-                tokenized_midi.events, tokenized_midi.end_time_in_ticks, settings
-            )
+        control_prefix, token_iterator = _get_span_augmentation(
+            tokenized_midi.events, tokenized_midi.end_time_in_ticks, settings
         )
+        buf.add_tokenized_file(control_prefix, token_iterator)
 
     # write all the sequences to a target
     buf.write_sequences()
@@ -491,42 +490,11 @@ def _get_span_augmentation(
     settings: AnticipationV2Settings,
 ):
     assert len(tokens) % 3 == 0, "bad length"
-    if settings.debug:
-        _check_no_punctuation_tokens(tokens, settings)
-
     # for now, I am leaving the implementation exactly as it was in v1
     # EXCEPT for how the SEPARATE token is handled
     events, controls = v1_extract_spans(tokens, rate=settings.span_anticipation_lambda)
-    events = v2_ops.add_rests(events, settings, end_time_in_ticks)
-    interleaved, controls = v2_ops.anticipate(events, controls, settings)
-    assert len(controls) == 0
-
-    chunks = []
-    ctx_length = settings.event_size * settings.m
-    for i in range(0, len(interleaved), ctx_length):
-        subsequence = interleaved[i : i + ctx_length]
-        assert subsequence
-
-        # TODO:...
-        # Q: what if we get a subsequence that has no span?
-
-        # important... flag is just AR here
-        subsequence.insert(0, settings.vocab.ANTICIPATE)
-        chunks.extend(subsequence)
-
-    assert chunks[0] == settings.vocab.ANTICIPATE
-    return chunks
-
-
-def _check_no_punctuation_tokens(
-    tokens: list[Token], settings: AnticipationV2Settings
-) -> None:
-    # TODO: wait you can't reliably determine if there's punctuation this way
-    # TODO: because the time (for long songs) could collide...
-    # TODO: hmmmm....
-    # this is kind of slow, so we only call it if in a debug context
-    punctuations = v2_ops.get_punctuation_tokens_idx(tokens, settings)
-    assert not punctuations, (
-        f"token sequence should not have separator, rest, anticipate, etc. tokens at "
-        f"this point in data processing. Punctuations: {punctuations}"
-    )
+    events = v2_ops.streaming_add_ticks(events, settings)
+    control_stream = (controls[i : i + 3] for i in range(0, len(controls), 3))
+    stream = v2_ops.streaming_anticipate(events, control_stream, settings)
+    stream = v2_ops.streaming_relativize_to_tick(stream, settings)
+    return (settings.vocab.ANTICIPATE,), stream
