@@ -128,6 +128,8 @@ def get_midi_instrument_name_from_midi_instrument_code(
         return "REST"
     elif instrument_midi_code == 130:
         return "TICK"
+    elif instrument_midi_code == 131:
+        return "ATICK"
     else:
         return "?"
 
@@ -216,6 +218,10 @@ class Event:
 
         ticks_seen = 0
         prev_tick_abs_time = 0
+
+        control_ticks_seen = 0
+        prev_control_tick_abs_time = 0
+
         while i < len(raw_event_token_seq):
             if raw_event_token_seq[i] in (
                 settings.vocab.AUTOREGRESS,
@@ -228,6 +234,10 @@ class Event:
                     if ar
                     else EventSpecialCode.ANTICIPATION_TOKEN
                 )
+                # prev_abs_time = 0
+                # if events:
+                #     prev_event = events[-1] if events[-1].is_note_event() else None
+                #     prev_abs_time = prev_event.absolute_time if prev_event else 0
                 events.append(
                     Event(
                         time=settings.vocab.TIME_OFFSET,
@@ -259,7 +269,14 @@ class Event:
                 continue
             elif raw_event_token_seq[i] == settings.vocab.TICK:
                 # tick token
-                tick_abs_time = ticks_seen * settings.tick_token_frequency_in_midi_ticks
+                # tick_abs_time = prev_control_tick_abs_time - (
+                #     0 * settings.delta * settings.time_resolution
+                # ) + ticks_seen * settings.tick_token_frequency_in_midi_ticks
+                tick_abs_time = (
+                    ticks_seen * settings.tick_token_frequency_in_midi_ticks
+                ) + (
+                    control_ticks_seen * settings.tick_token_frequency_in_midi_ticks
+                )
                 events.append(
                     Event(
                         time=settings.vocab.TIME_OFFSET,
@@ -276,6 +293,28 @@ class Event:
                 )
                 prev_tick_abs_time = tick_abs_time
                 ticks_seen += 1
+                i += 1
+                continue
+            elif raw_event_token_seq[i] == settings.vocab.ATICK:
+                # tick token
+                c_tick_abs_time = (control_ticks_seen * settings.tick_token_frequency_in_midi_ticks) + (
+                    ticks_seen * settings.tick_token_frequency_in_midi_ticks
+                )
+                events.append(
+                    Event(
+                        time=settings.vocab.ATIME_OFFSET,
+                        duration=settings.vocab.ADUR_OFFSET,
+                        note_instr=settings.vocab.CONTROL_OFFSET + get_note_instrument_token(
+                            131, 0, settings, check_range=False
+                        ),
+                        is_control=True,
+                        special_code=EventSpecialCode.TICK,
+                        original_idx_in_token_seq=i,
+                        absolute_time=c_tick_abs_time,
+                        settings=settings,
+                    )
+                )
+                control_ticks_seen += 1
                 i += 1
                 continue
             else:
@@ -314,7 +353,11 @@ class Event:
                     absolute_time=0,
                     settings=settings,
                 )
-                new_event.absolute_time = prev_tick_abs_time + new_event.midi_time()
+                if not new_event.is_control:
+                    new_event.absolute_time = prev_tick_abs_time + new_event.midi_time()
+                else:
+                    new_event.absolute_time = prev_tick_abs_time + new_event.midi_time() + (settings.delta * settings.time_resolution)
+                #new_event.absolute_time = new_event.midi_time()
                 events.append(new_event)
 
                 if events[-1].is_control:

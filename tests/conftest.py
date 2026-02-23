@@ -233,6 +233,7 @@ def local_midi_vocab() -> Vocab:
         ATIME_OFFSET=17613,
         ADUR_OFFSET=17713,
         ANOTE_OFFSET=18713,
+        ATICK=18713 + 17612 + 1,
         # ...
         SPECIAL_OFFSET=35225,
         SEPARATOR=35225,

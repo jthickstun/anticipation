@@ -35,15 +35,16 @@ class Vocab:
     ATIME_OFFSET: int = v1_vocab.ATIME_OFFSET
     ADUR_OFFSET: int = v1_vocab.ADUR_OFFSET
     ANOTE_OFFSET: int = v1_vocab.ANOTE_OFFSET
+    ATICK: int = ANOTE_OFFSET + 1
 
     # this defines more or less where musical tokens end and control
     # or special tokens begin
-    SPECIAL_OFFSET: int = v1_vocab.SPECIAL_OFFSET
+    SPECIAL_OFFSET: int = ATICK + 1
 
     # special tokens for control type and sequence separation
-    SEPARATOR: int = v1_vocab.SEPARATOR
-    AUTOREGRESS: int = v1_vocab.AUTOREGRESS
-    ANTICIPATE: int = v1_vocab.ANTICIPATE
+    SEPARATOR: int = SPECIAL_OFFSET
+    AUTOREGRESS: int = SEPARATOR + 1
+    ANTICIPATE: int = AUTOREGRESS + 1
 
     def __post_init__(self) -> None:
         # check that all the token values are organized and increasing

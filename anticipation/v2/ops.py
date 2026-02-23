@@ -279,9 +279,18 @@ def streaming_anticipate(
         # return the iterator object
         return events
 
-    first_control_time = curr_control[0] - settings.vocab.ATIME_OFFSET
+    controls = list(controls)
+    first_control_time = float("inf")
+    for c in controls:
+        if len(c) == 3:
+            first_control_time = c[0] - settings.vocab.ATIME_OFFSET
+            break
+        else:
+            continue
+
     control_time = first_control_time
     num_ticks_seen = 0
+    num_control_ticks_seen = 0
 
     for cur_event in events:
         if len(cur_event) == 3:
@@ -291,18 +300,34 @@ def streaming_anticipate(
             assert note < settings.vocab.CONTROL_OFFSET
         else:
             # a tick
+            assert cur_event[0] == settings.vocab.TICK
             event_time = num_ticks_seen * settings.tick_token_frequency_in_midi_ticks
             num_ticks_seen += 1
 
         while event_time >= control_time - delta_ticks:
             yield curr_control
-            curr_control = next(controls, None)
-            control_time = (
-                curr_control[0] - settings.vocab.ATIME_OFFSET
-                if curr_control is not None
-                else float("inf")
-            )
+            if controls:
+                curr_control = controls[0]
+                controls = controls[1:]
+            else:
+                curr_control = None
+
+            if curr_control is None:
+                control_time = float("inf")
+            elif len(curr_control) == 1:
+                control_time = (settings.time_resolution * settings.delta) + num_control_ticks_seen * settings.tick_token_frequency_in_midi_ticks
+                num_control_ticks_seen += 1
+            elif len(curr_control) == 3:
+                control_time = curr_control[0] - settings.vocab.ATIME_OFFSET
+            else:
+                raise ValueError("Invalid size for control")
+
+        print(cur_event)
         yield cur_event
+
+    if control_time < float("inf"):
+        for cur_control in controls:
+            yield cur_control
 
 
 def streaming_add_ticks(
@@ -338,14 +363,25 @@ def streaming_relativize_to_tick(
         )
 
     add_every = settings.tick_token_frequency_in_midi_ticks
+    forward_ticks = 0
     recent_tick = 0
     for next_element in token_stream_iterator:
+        print(next_element)
         if len(next_element) == 1:
             # this is a tick
             recent_tick += 1
             to_add = next_element
         elif len(next_element) == 3:
             relativize = round((recent_tick - 1) * add_every) if recent_tick > 0 else 0
+            if next_element[1] >= settings.vocab.CONTROL_OFFSET:
+                # this is a control
+                relativize += settings.time_resolution * settings.delta
+                if next_element[0] - relativize < settings.vocab.CONTROL_OFFSET:
+                    # ???????
+                    relativize = next_element[0] - settings.vocab.CONTROL_OFFSET
+                    #relativize = (recent_tick + 1) * add_every
+
+
             to_add = (
                 next_element[0] - relativize,
                 next_element[1],
@@ -357,6 +393,13 @@ def streaming_relativize_to_tick(
             if next_element[1] >= settings.vocab.CONTROL_OFFSET:
                 # don't let the time be over-subtracted
                 assert to_add[0] >= settings.vocab.CONTROL_OFFSET
+                # # don't let time be under-subtracted
+                assert to_add[0] <= settings.vocab.ADUR_OFFSET
+            else:
+                # don't let the time be over-subtracted
+                assert to_add[0] >= settings.vocab.TIME_OFFSET
+                # don't let time be under-subtracted
+                assert to_add[0] <= settings.vocab.DUR_OFFSET
         else:
             raise ValueError(
                 f"Incorrect length of event tuple. Must be 1 or 3. Got: {len(next_element)}"
@@ -370,33 +413,45 @@ def extract_spans_v1_style(all_events, settings: AnticipationV2Settings):
     controls = []
     span = True
     next_span = end_span = settings.vocab.TIME_OFFSET
-    for time, dur, note in zip(all_events[0::3], all_events[1::3], all_events[2::3]):
+
+    ticks_seen = 0
+    for token_tuple in all_events:
+        # if len(token_tuple) == 1:
+        #     abs_time = ticks_seen * settings.tick_token_frequency_in_midi_ticks
+        #     ticks_seen += 1
+        # else:
+        time, dur, note = token_tuple
         # shouldn't be in the sequence yet
-        assert note not in [settings.vocab.SEPARATOR, settings.vocab.TICK]
+        assert note not in [settings.vocab.SEPARATOR]
+        abs_time = time
 
         # end of an anticipated span; decide when to do it again (next_span)
-        if span and time >= end_span:
+        if span and abs_time >= end_span:
             span = False
-            next_span = time + int(
+            next_span = abs_time + int(
                 settings.time_resolution
                 * np.random.exponential(1.0 / settings.span_anticipation_lambda)
             )
 
         # anticipate a 3-second span
-        if (not span) and time >= next_span:
+        if (not span) and abs_time >= next_span:
             span = True
-            end_span = time + settings.delta * settings.time_resolution
+            end_span = abs_time + settings.delta * settings.time_resolution
 
         if span:
+            # if len(token_tuple) == 1:
+            #     controls.append((settings.vocab.ATICK,))
+            # else:
+            a_time, a_dur, a_note = token_tuple
             # mark this event as a control
-            controls.extend(
-                [
-                    settings.vocab.CONTROL_OFFSET + time,
-                    settings.vocab.CONTROL_OFFSET + dur,
-                    settings.vocab.CONTROL_OFFSET + note,
-                ]
+            controls.append(
+                (
+                    settings.vocab.CONTROL_OFFSET + a_time,
+                    settings.vocab.CONTROL_OFFSET + a_dur,
+                    settings.vocab.CONTROL_OFFSET + a_note,
+                )
             )
         else:
-            events.extend([time, dur, note])
+            events.append(token_tuple)
 
     return events, controls

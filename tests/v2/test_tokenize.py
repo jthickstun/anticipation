@@ -237,7 +237,8 @@ def test_tokenize_v2_lakh_span_anticipation(
     lmd_0_example_1_midi_path: Path,
     local_midi_vocab: Vocab,
 ) -> None:
-    set_seed(48)
+    #set_seed(48)
+    set_seed(0)
 
     tokens_to = []
     settings = AnticipationV2Settings(
@@ -250,10 +251,17 @@ def test_tokenize_v2_lakh_span_anticipation(
         debug=True,
         debug_flush_remaining_token_buffer=True,
     )
+    print("\n\n")
     stats = v2_tokenize([lmd_0_example_1_midi_path], tokens_to, settings)
     assert not stats.ignored_files
     assert settings.vocab.TICK == 17612
+    zzz = 10
+    first_seq = tokens_to[0]
+    # for x in first_seq:
+    #     assert x >= 0
+    assert len(tokens_to[0]) == settings.context_size
     parsed_events = Event.from_token_seq([x for b in tokens_to for x in b], settings)
+    print(len(parsed_events))
     get_figure_and_open(
         events=parsed_events,
         delta=settings.delta,

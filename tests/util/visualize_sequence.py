@@ -83,9 +83,25 @@ def _add_boundaries_to_subplot(
     Uses subplot-aware add_shape/add_annotation so it doesn't span the index subplot.
     """
     dfb = df_boundaries.sort_values(by="start", kind="mergesort")
+    prev_end = 0
     for row in dfb.to_dict("records"):
+        print(row)
+        zzz = 10
         # special_code = row["special_code"]
         if row["original_idx_in_token_seq"] % 1024 == 0:
+            fig.add_shape(
+                type="line",
+                x0=prev_end,
+                x1=prev_end,
+                y0=0,
+                y1=1,
+                xref="x",
+                yref="y domain",
+                layer="above",
+                row=1,
+                col=1,
+                line={"dash": "dash", "width": 0.7},
+            )
             fig.add_shape(
                 type="line",
                 x0=0,
@@ -112,6 +128,7 @@ def _add_boundaries_to_subplot(
                 row=2,
                 col=1,
             )
+        prev_end = max(prev_end, row['end'])
 
     first_delta_sec_in_ticks = int(delta * time_resolution)
     fig.add_shape(
