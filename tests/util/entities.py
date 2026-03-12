@@ -2,10 +2,10 @@
 These are utilities for testing / developing with the codebase.
 """
 
+from typing import Union
 from dataclasses import dataclass
 from enum import Enum
 import re
-from typing import Union
 
 from anticipation.v2.config import AnticipationV2Settings
 from anticipation.v2.types import Token, MIDITick, MIDIProgramCode, MIDINote
@@ -205,22 +205,8 @@ class Event:
 
         i = 0
         events = []
-
-        # the function ops.min_time expects sequence to not contain any flag tokens
-        # prev_t = ops.min_time(
-        #     [
-        #         x
-        #         for x in raw_event_token_seq[i:]
-        #         if x not in (v.ANTICIPATE, v.AUTOREGRESS, v.SEPARATOR)
-        #     ],
-        #     seconds=False,
-        # )
-
         ticks_seen = 0
         prev_tick_abs_time = 0
-
-        control_ticks_seen = 0
-        prev_control_tick_abs_time = 0
 
         while i < len(raw_event_token_seq):
             if raw_event_token_seq[i] in (
@@ -234,10 +220,6 @@ class Event:
                     if ar
                     else EventSpecialCode.ANTICIPATION_TOKEN
                 )
-                # prev_abs_time = 0
-                # if events:
-                #     prev_event = events[-1] if events[-1].is_note_event() else None
-                #     prev_abs_time = prev_event.absolute_time if prev_event else 0
                 events.append(
                     Event(
                         time=settings.vocab.TIME_OFFSET,
@@ -269,14 +251,7 @@ class Event:
                 continue
             elif raw_event_token_seq[i] == settings.vocab.TICK:
                 # tick token
-                # tick_abs_time = prev_control_tick_abs_time - (
-                #     0 * settings.delta * settings.time_resolution
-                # ) + ticks_seen * settings.tick_token_frequency_in_midi_ticks
-                tick_abs_time = (
-                    ticks_seen * settings.tick_token_frequency_in_midi_ticks
-                ) + (
-                    control_ticks_seen * settings.tick_token_frequency_in_midi_ticks
-                )
+                tick_abs_time = ticks_seen * settings.tick_token_every_n_ticks
                 events.append(
                     Event(
                         time=settings.vocab.TIME_OFFSET,
@@ -293,28 +268,6 @@ class Event:
                 )
                 prev_tick_abs_time = tick_abs_time
                 ticks_seen += 1
-                i += 1
-                continue
-            elif raw_event_token_seq[i] == settings.vocab.ATICK:
-                # tick token
-                c_tick_abs_time = (control_ticks_seen * settings.tick_token_frequency_in_midi_ticks) + (
-                    ticks_seen * settings.tick_token_frequency_in_midi_ticks
-                )
-                events.append(
-                    Event(
-                        time=settings.vocab.ATIME_OFFSET,
-                        duration=settings.vocab.ADUR_OFFSET,
-                        note_instr=settings.vocab.CONTROL_OFFSET + get_note_instrument_token(
-                            131, 0, settings, check_range=False
-                        ),
-                        is_control=True,
-                        special_code=EventSpecialCode.TICK,
-                        original_idx_in_token_seq=i,
-                        absolute_time=c_tick_abs_time,
-                        settings=settings,
-                    )
-                )
-                control_ticks_seen += 1
                 i += 1
                 continue
             else:
@@ -356,14 +309,10 @@ class Event:
                 if not new_event.is_control:
                     new_event.absolute_time = prev_tick_abs_time + new_event.midi_time()
                 else:
-                    new_event.absolute_time = prev_tick_abs_time + new_event.midi_time() + (settings.delta * settings.time_resolution)
-                #new_event.absolute_time = new_event.midi_time()
+                    new_event.absolute_time = (
+                        prev_tick_abs_time + new_event.midi_time()
+                    ) + (settings.delta * settings.time_resolution)
                 events.append(new_event)
-
-                if events[-1].is_control:
-                    prev_t = t - settings.vocab.ATIME_OFFSET
-                else:
-                    prev_t = t
                 i += 3
 
         return events
@@ -419,7 +368,7 @@ class Event:
             return self.time, self.duration, self.note_instr
 
     def is_rest(self) -> bool:
-        if self.settings.tick_token_frequency_in_midi_ticks == 0:
+        if self.settings.tick_token_every_n_ticks == 0:
             return self.note_instr == self.settings.vocab.TICK
         else:
             return False
@@ -431,6 +380,9 @@ class Event:
         return (
             self.special_code == EventSpecialCode.TYPICAL_EVENT
         ) and not self.is_control
+
+    def is_anticipate(self) -> bool:
+        return self.special_code == EventSpecialCode.ANTICIPATION_TOKEN
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Event):
@@ -444,8 +396,8 @@ class Event:
             and self.settings.time_resolution == other.settings.time_resolution
             and self.settings.max_note_duration_in_seconds
             == other.settings.max_note_duration_in_seconds
-            and self.settings.tick_token_frequency_in_midi_ticks
-            == other.settings.tick_token_frequency_in_midi_ticks
+            and self.settings.tick_token_every_n_ticks
+            == other.settings.tick_token_every_n_ticks
             and
             # note properties
             self.time == other.time
@@ -464,3 +416,6 @@ class Event:
             self.note().to_name(),
             self.absolute_time,
         )
+
+    def __hash__(self) -> int:
+        return hash(repr(self))

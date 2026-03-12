@@ -6,14 +6,26 @@ import numpy as np
 import pytest
 
 from anticipation.v2.types import Token
-from anticipation.v2.config import AnticipationV2Settings, Vocab
+from anticipation.v2.config import (
+    AnticipationV2Settings,
+    Vocab,
+    MIDI_DRUMS_PROGRAM_CODE,
+)
 from anticipation.v2.tokenize import tokenize as v2_tokenize
-from anticipation.v2.tokenize import MIDIFileIgnoredReason, TokenizationStatSummary
+from anticipation.v2.tokenize import (
+    MIDIFileIgnoredReason,
+    TokenizationStatSummary,
+    _tokenize_midi_file,
+    _get_augmentation_instrument,
+    TokenizedMIDIFileResult,
+    TokenStream,
+)
 from anticipation.v2.io import TokenSequenceBinaryFile
 from anticipation.v2.util import set_seed
 
 from tests.util.entities import Event, EventSpecialCode, get_note_instrument_token, Note
 from tests.util.visualize_sequence import get_figure_and_open
+from tests.conftest import get_current_function_name
 
 from tests.conftest import (
     VISUALIZATIONS_PATH,
@@ -31,10 +43,10 @@ def lmd_0_example_1_tokens_and_parsed_events(
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
-        tick_token_frequency_in_midi_ticks=100,
+        tick_token_every_n_ticks=100,
         debug=True,
         debug_flush_remaining_token_buffer=True,
+        do_clip_overlapping_durations_in_midi_conversion=False,
     )
     midi_files = [lmd_0_example_1_midi_path]
     in_memory_tokens = []
@@ -47,11 +59,12 @@ def lmd_0_example_1_tokens_and_parsed_events(
     # tokens in the buffer that would typically be ignored in a production context
     assert all((len(x) == settings.context_size for x in in_memory_tokens[:-1]))
 
-    # there are 584 remaining that do not fit exactly into a context window
-    assert len(in_memory_tokens[8]) == 584
+    # there are 585 remaining that do not fit exactly into a context window
+    assert len(in_memory_tokens[8]) == 585
+    assert in_memory_tokens[8][-1] == settings.vocab.SEPARATOR
 
     all_tokens_flattened = [x for b in in_memory_tokens for x in b]
-    assert len(all_tokens_flattened) == 584 + (1024 * 8)
+    assert len(all_tokens_flattened) == 585 + (1024 * 8)
 
     num_total_separators = 0
     for i, packed_seq in enumerate(in_memory_tokens):
@@ -78,7 +91,7 @@ def test_tokenize_v2_lakh_ar_only_for_visualization(
         events=parsed_events,
         delta=settings.delta,
         time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / f"autoregressive_v2.html"),
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
         auto_open=False,
     )
 
@@ -98,7 +111,7 @@ def test_tokenize_v2_lakh_ar_local_midi_vocab(
         events=parsed_events,
         delta=local_midi_settings_ar_only.delta,
         time_resolution=local_midi_settings_ar_only.time_resolution,
-        path=(VISUALIZATIONS_PATH / f"autoregressive_v2_local_midi.html"),
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
         auto_open=False,
     )
 
@@ -107,7 +120,10 @@ def test_tokenize_v2_lakh_instrument_for_visualization(
     lmd_0_example_1_midi_path: Path,
 ) -> None:
     instrument_anticipation_sample = []
-    with patch("anticipation.tokenize.np.random.choice", return_value=[128]):
+    with patch(
+        "anticipation.v2.tokenize.np.random.choice",
+        return_value=[MIDI_DRUMS_PROGRAM_CODE],
+    ):
         # force the call to np.random.choice to always return [128] for tokenize.py
         # This means that the instrument code 128 will always be a control. This code
         # is the drum track for this sample. This makes it much easier to see the
@@ -117,8 +133,9 @@ def test_tokenize_v2_lakh_instrument_for_visualization(
             num_autoregressive_seq_per_midi_file=0,
             num_instrument_anticipation_augmentations_per_midi_file=1,
             num_span_anticipation_augmentations_per_midi_file=0,
-            num_random_anticipation_augmentations_per_midi_file=0,
+            tick_token_every_n_ticks=100,
             debug=True,
+            debug_flush_remaining_token_buffer=False,
         )
         stats = v2_tokenize(
             [lmd_0_example_1_midi_path], instrument_anticipation_sample, settings
@@ -134,7 +151,9 @@ def test_tokenize_v2_lakh_instrument_for_visualization(
         num_total_separators += len(
             [x for x in packed_seq if x == settings.vocab.SEPARATOR]
         )
-    assert num_total_separators == 1
+
+    # separator is a suffix now
+    assert num_total_separators == 0
     parsed_events = Event.from_token_seq(
         [x for b in instrument_anticipation_sample for x in b], settings
     )
@@ -142,7 +161,7 @@ def test_tokenize_v2_lakh_instrument_for_visualization(
         events=parsed_events,
         delta=settings.delta,
         time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / f"anticipated_instr_v2.html"),
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
         auto_open=False,
     )
 
@@ -157,13 +176,12 @@ def test_tokenize_with_ticks_for_small_sequence_ar(
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
         # force small context for this specific test, otherwise tokens are left in the
         # buffer
         context_size=104,
         debug=True,
         debug_flush_remaining_token_buffer=False,
-        tick_token_frequency_in_midi_ticks=100,
+        tick_token_every_n_ticks=100,
     )
     tokenized_seq = []
     stats = v2_tokenize([c_major_midi_path], tokenized_seq, settings)
@@ -186,27 +204,32 @@ def test_tokenize_with_ticks_for_small_sequence_ar(
     ticks = [x for x in parsed_events if x.is_tick()]
     ticks_abs_times = [x.absolute_time for x in ticks]
     assert ticks_abs_times == list(
-        range(0, 1500 + 1, settings.tick_token_frequency_in_midi_ticks)
+        range(0, 1500 + 1, settings.tick_token_every_n_ticks)
     )
     get_figure_and_open(
         events=parsed_events,
         delta=settings.delta,
         time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / f"ar_with_ticks_small_seq.html"),
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
         auto_open=False,
     )
 
 
-def test_tokenize_with_ticks_for_lakh_ar(lmd_0_example_1_midi_path: Path) -> None:
+def test_tokenize_with_ticks_for_lakh_ar(
+    lmd_0_example_1_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
     settings = AnticipationV2Settings(
         min_track_events=1,
-        vocab=Vocab(),
+        vocab=local_midi_vocab,
         # AR only
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
+        tick_token_every_n_ticks=100,
+        do_clip_overlapping_durations_in_midi_conversion=False,
         debug=True,
+        debug_flush_remaining_token_buffer=False,
     )
     tokenized_seq = []
     stats = v2_tokenize([lmd_0_example_1_midi_path], tokenized_seq, settings)
@@ -220,7 +243,8 @@ def test_tokenize_with_ticks_for_lakh_ar(lmd_0_example_1_midi_path: Path) -> Non
             [x for x in packed_seq if x == settings.vocab.SEPARATOR]
         )
 
-    assert num_total_separators == 1
+    # the separator is a suffix instead of prefix now
+    assert num_total_separators == 0
     parsed_events = Event.from_token_seq(
         [x for b in tokenized_seq for x in b], settings
     )
@@ -228,16 +252,40 @@ def test_tokenize_with_ticks_for_lakh_ar(lmd_0_example_1_midi_path: Path) -> Non
         events=parsed_events,
         delta=settings.delta,
         time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / f"ar_with_ticks_lakh_0.html"),
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
         auto_open=False,
     )
+
+
+def _check_anticipation_rule_for_controls(
+    token_sequences: list[list[Token]], settings: AnticipationV2Settings
+) -> None:
+    assert isinstance(token_sequences, list)
+    assert len(token_sequences) > 1
+    # should be a list of lists of tokens
+    assert isinstance(token_sequences[0], list)
+
+    # basic checks for context length
+    exact_size_tokens_seq = list(token_sequences)
+    if settings.debug_flush_remaining_token_buffer:
+        exact_size_tokens_seq = exact_size_tokens_seq[:-1]
+    assert all(len(x) == settings.context_size for x in exact_size_tokens_seq)
+
+    parsed_events = Event.from_token_seq(
+        [x for b in token_sequences for x in b], settings
+    )
+
+    # rule: controls must always come after a tick, or follow another control
+    for i, e in enumerate(parsed_events):
+        if e.is_control:
+            prev_event = parsed_events[i - 1]
+            assert prev_event.is_control or prev_event.is_tick()
 
 
 def test_tokenize_v2_lakh_span_anticipation(
     lmd_0_example_1_midi_path: Path,
     local_midi_vocab: Vocab,
 ) -> None:
-    #set_seed(48)
     set_seed(0)
 
     tokens_to = []
@@ -246,28 +294,315 @@ def test_tokenize_v2_lakh_span_anticipation(
         num_autoregressive_seq_per_midi_file=0,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=1,
-        num_random_anticipation_augmentations_per_midi_file=0,
-        tick_token_frequency_in_midi_ticks=100,
+        tick_token_every_n_ticks=100,
         debug=True,
         debug_flush_remaining_token_buffer=True,
     )
-    print("\n\n")
     stats = v2_tokenize([lmd_0_example_1_midi_path], tokens_to, settings)
+    _check_anticipation_rule_for_controls(tokens_to, settings)
+
     assert not stats.ignored_files
     assert settings.vocab.TICK == 17612
-    zzz = 10
-    first_seq = tokens_to[0]
-    # for x in first_seq:
-    #     assert x >= 0
-    assert len(tokens_to[0]) == settings.context_size
+
     parsed_events = Event.from_token_seq([x for b in tokens_to for x in b], settings)
-    print(len(parsed_events))
     get_figure_and_open(
         events=parsed_events,
         delta=settings.delta,
         time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / f"anticipated_span_v2.html"),
-        auto_open=True,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_v2_dense_sparse_piano_span_anticipation(
+    dense_drums_sparse_piano_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    set_seed(0)
+    tokens_to = []
+    settings = AnticipationV2Settings(
+        vocab=local_midi_vocab,
+        min_track_events=0,
+        min_track_time_in_seconds=0,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        tick_token_every_n_ticks=100,
+        # need this for this file...
+        do_clip_overlapping_durations_in_midi_conversion=True,
+        debug=True,
+        debug_flush_remaining_token_buffer=False,
+    )
+    with patch(
+        "anticipation.v2.tokenize.random_time_partition",
+        side_effect=[
+            # first call to random_time_partition's return value
+            (3054.3761, (312, 3062)),
+            # second call's return value
+            (6285.9655, (292, 6300)),
+        ],
+    ):
+        stats = v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_to, settings)
+
+    assert not stats.ignored_files
+    _check_anticipation_rule_for_controls(tokens_to, settings)
+
+    pe = Event.from_token_seq([x for b in tokens_to for x in b], settings)
+
+    # assert len(pe) == 730
+
+    assert pe[0].is_anticipate()
+    assert pe[1].is_tick()
+
+    assert pe[2].midi_instrument() == 0
+    assert pe[2].midi_time() == 0
+    assert pe[2].midi_duration() == 100
+    assert pe[2].note().name == "C3"
+
+    # all events here...
+    for i in range(3, 253):
+        assert not pe[i].is_control
+
+    # until the first control, an anticipated span at the end of the context
+    assert pe[253].is_control
+    assert pe[253].midi_duration() == 38
+    assert pe[253].midi_instrument() == 128
+    assert pe[253].note().name == "C1"
+
+    # TODO: make this more detailed test
+
+    get_figure_and_open(
+        events=pe,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_v2_simple_two_instrument_midi(
+    simple_two_instrument_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    set_seed(0)
+    tokens_to = []
+    settings = AnticipationV2Settings(
+        vocab=local_midi_vocab,
+        context_size=80,
+        min_track_events=0,
+        min_track_time_in_seconds=0,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        tick_token_every_n_ticks=100,
+        debug=True,
+        debug_flush_remaining_token_buffer=False,
+    )
+    stats = v2_tokenize([simple_two_instrument_midi_path], tokens_to, settings)
+    assert not stats.ignored_files
+    parsed_events = Event.from_token_seq(
+        [x for b in [tokens_to[0]] for x in b], settings
+    )
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_v2_dense_sparse_piano_ar_only(
+    dense_drums_sparse_piano_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    # testing a simple sequence with autoregressive only settings
+    # also this MIDI file has strange overlaps, so ensure those are gone
+    tokens_to = []
+    settings = AnticipationV2Settings(
+        vocab=local_midi_vocab,
+        context_size=1024,
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        tick_token_every_n_ticks=100,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+    )
+    stats = v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_to, settings)
+    assert not stats.ignored_files
+    # fills context 3 times, including end buffer
+    assert len(tokens_to) == 3
+    assert len(tokens_to[0]) == settings.context_size
+    assert len(tokens_to[1]) == settings.context_size
+    assert len(tokens_to[2]) == 424
+
+    flattened_tokens = [x for b in tokens_to for x in b]
+
+    num_ar_tokens = flattened_tokens.count(settings.vocab.AUTOREGRESS)
+    assert num_ar_tokens == 3
+    num_tick_tokens = flattened_tokens.count(settings.vocab.TICK)
+    assert num_tick_tokens == 85
+    num_sep_tokens = flattened_tokens.count(settings.vocab.SEPARATOR)
+    assert num_sep_tokens == 1
+
+    # no duplicate events
+    parsed_events = Event.from_token_seq([x for b in tokens_to for x in b], settings)
+
+    # each AR token is the same
+    assert len(parsed_events) - 2 == len(set(parsed_events))
+    assert len(parsed_events) == 883
+
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_v2_lakh_instrument_anticipation_blockwise(
+    lmd_0_example_1_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    set_seed(0)
+
+    with patch(
+        "anticipation.v2.tokenize.np.random.choice",
+        return_value=[MIDI_DRUMS_PROGRAM_CODE],
+    ):
+        settings = AnticipationV2Settings(
+            vocab=local_midi_vocab,
+            num_autoregressive_seq_per_midi_file=0,
+            num_instrument_anticipation_augmentations_per_midi_file=1,
+            num_span_anticipation_augmentations_per_midi_file=0,
+            tick_token_every_n_ticks=100,
+            debug=True,
+            debug_flush_remaining_token_buffer=True,
+        )
+        tokens_to = []
+        stats = v2_tokenize([lmd_0_example_1_midi_path], tokens_to, settings)
+        assert not stats.ignored_files
+        parsed_events = Event.from_token_seq(
+            [x for b in tokens_to for x in b], settings
+        )
+
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_v2_dense_drums_sparse_piano_instrument_anticipation_blockwise(
+    dense_drums_sparse_piano_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    with patch(
+        "anticipation.v2.tokenize.np.random.choice",
+        return_value=[MIDI_DRUMS_PROGRAM_CODE],
+    ):
+        settings = AnticipationV2Settings(
+            vocab=local_midi_vocab,
+            num_autoregressive_seq_per_midi_file=0,
+            num_instrument_anticipation_augmentations_per_midi_file=1,
+            num_span_anticipation_augmentations_per_midi_file=0,
+            tick_token_every_n_ticks=100,
+            debug=True,
+            debug_flush_remaining_token_buffer=True,
+            do_clip_overlapping_durations_in_midi_conversion=False,
+        )
+        result: TokenizedMIDIFileResult = _tokenize_midi_file(
+            dense_drums_sparse_piano_midi_path, settings
+        )
+
+        # check that there are no repeated notes in the tokenization result, we have issues in the
+        # event sequence... prevent exactly the same event from appearing if because that can happen
+        # in MIDI files sometimes...
+        seen = set()
+        for i in range(0, len(result.events), 3):
+            my_event = tuple(result.events[i : i + 3])
+            assert my_event not in seen
+            seen.add(my_event)
+
+        # this test bypasses the sequence packer, so it won't have
+        # separator tokens or other control tokens, also there's no truncation
+        # logic to fit it into the context window... so we can assume every event
+        # is complete
+        token_stream: TokenStream
+        control_prefix, token_stream = _get_augmentation_instrument(
+            result.events,
+            result.all_midi_program_codes,
+            settings,
+        )
+        # ensure that the associated control prefix denotes anticipatory
+        # sequence
+        assert control_prefix == (settings.vocab.ANTICIPATE,)
+
+    token_list = list(token_stream)
+    assert len(token_list) == 883
+
+    # token list should be a list of tuples of int, e.g.
+    # [(TICK,), (0, 50, 12), (50, 50, 12), ...]
+    assert isinstance(token_list[0], tuple)
+    assert isinstance(token_list[0][0], int)
+
+    # must conclude with separator
+    assert token_list[-1][0] == settings.vocab.SEPARATOR
+
+    tick_idxs: list[int] = []
+    for i, event in enumerate(token_list):
+        if len(event) == 1:
+            if event == (settings.vocab.TICK,):
+                # this is a tick
+                tick_idxs.append(i)
+            else:
+                # if it is length 1 and not a tick,
+                # then it must be a special token
+                assert event[0] >= settings.vocab.SPECIAL_OFFSET
+
+    # expect this many ticks
+    assert len(tick_idxs) == 88
+
+    # sequence should start with a tick
+    assert tick_idxs[0] == 0
+    for i, tick_idx in enumerate(tick_idxs[:-1]):
+        curr_tick_idx = tick_idx
+        next_tick_idx = tick_idxs[i + 1]
+        has_controls = False
+        has_events = False
+
+        # there might be a subsequence between two ticks that has only events,
+        # in that case, controls need not immediately follow the tick because there
+        # are none
+        for k in range(curr_tick_idx, next_tick_idx):
+            has_controls = (
+                has_controls or token_list[k][0] >= settings.vocab.CONTROL_OFFSET
+            )
+            has_events = has_events or token_list[k][0] < settings.vocab.DUR_OFFSET
+
+        if has_controls:
+            # it must be the case that a control token directly follows every tick
+            triple_after_tick: tuple[Token, ...] = token_list[curr_tick_idx + 1]
+            assert triple_after_tick[0] >= settings.vocab.CONTROL_OFFSET
+            assert triple_after_tick[1] >= settings.vocab.CONTROL_OFFSET
+            assert triple_after_tick[2] >= settings.vocab.CONTROL_OFFSET
+
+    ungrouped_tokens = [x for b in token_list for x in b]
+    assert len(ungrouped_tokens) == 2471
+
+    # parse and plot
+    parsed_events = Event.from_token_seq(ungrouped_tokens, settings)
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
     )
 
 
@@ -279,7 +614,6 @@ def test_absolute_time_is_correct_with_ticks(lmd_0_example_1_midi_path: Path) ->
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
         debug=True,
     )
     # tokenize and parse without ticks added
@@ -332,10 +666,9 @@ def test_sequence_packing_file_correctness(
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
         debug=True,
         debug_flush_remaining_token_buffer=False,
-        tick_token_frequency_in_midi_ticks=100,
+        tick_token_every_n_ticks=100,
     )
     midi_files = [lmd_0_example_1_midi_path, lmd_0_example_2_midi_path]
 
@@ -343,8 +676,9 @@ def test_sequence_packing_file_correctness(
     stats = v2_tokenize(midi_files, in_memory_tokens, settings)
     assert not stats.ignored_files
 
-    # this token basically prefixes each file
-    assert stats.num_separator_tokens == 2
+    # the separator is a suffix, only appears when there is a new
+    # file that appears next after it
+    assert stats.num_separator_tokens == 1
 
     # 97 complete sequences
     assert len(in_memory_tokens) == 97
@@ -358,21 +692,22 @@ def test_sequence_packing_file_correctness(
     sep_idx = seq_border_frame.index(settings.vocab.SEPARATOR)
     assert sep_idx == 584
     lmd_0_example_1_actual_tokens = in_memory_tokens[:8] + [
-        in_memory_tokens[8][:sep_idx]
+        in_memory_tokens[8][: sep_idx + 1]
     ]
     lmd_0_example_1_actual_events = Event.from_token_seq(
         [x for b in lmd_0_example_1_actual_tokens for x in b], settings
     )
+
     (
         lmd_0_example_1_expected_tokens,
         lmd_0_example_1_expected_events,
         expected_settings,
     ) = lmd_0_example_1_tokens_and_parsed_events
-    assert lmd_0_example_1_actual_tokens == lmd_0_example_1_expected_tokens
-    assert lmd_0_example_1_actual_events[0] == lmd_0_example_1_expected_events[0]
-    assert lmd_0_example_1_actual_events == lmd_0_example_1_expected_events
     assert settings.context_size == expected_settings.context_size
     assert settings.vocab == expected_settings.vocab
+    assert lmd_0_example_1_actual_events[0] == lmd_0_example_1_expected_events[0]
+    assert lmd_0_example_1_actual_events == lmd_0_example_1_expected_events
+    assert lmd_0_example_1_actual_tokens == lmd_0_example_1_expected_tokens
 
     # test saving data to disk is exactly same as in-memory
     with tempfile.TemporaryDirectory() as td:
@@ -399,7 +734,6 @@ def test_no_segfault(lmd_1_example_0_midi_path: Path) -> None:
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
         debug_flush_remaining_token_buffer=False,
     )
     tokens_to = []
@@ -424,14 +758,14 @@ def test_sequence_boundaries_for_truncated_end_triple(c_major_midi_path: Path) -
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
-        tick_token_frequency_in_midi_ticks=100,
+        tick_token_every_n_ticks=100,
+        do_clip_overlapping_durations_in_midi_conversion=False,
     )
     tokens_to = []
     stats: TokenizationStatSummary = v2_tokenize(
         [c_major_midi_path], output=tokens_to, settings=settings
     )
-    assert stats.num_times_end_triple_was_truncated == 2
+    assert stats.num_times_end_triple_was_truncated == 1
     assert len(tokens_to) == 16
     assert stats.num_sequences == 16
 
@@ -584,128 +918,121 @@ def test_sequence_boundaries_for_truncated_end_triple(c_major_midi_path: Path) -
     assert seq_0 == [
         # special
         settings.vocab.AUTOREGRESS,
-        settings.vocab.SEPARATOR,
         # tick
         settings.vocab.TICK,
         # event 0
         *event_0,
-        # event 1, is cut off - this is the first truncation
-        *event_1[:2],
+        # event 1
+        *event_1,
     ]
     seq_1 = tokens_to[1]
     assert seq_1 == [
         # special
         settings.vocab.AUTOREGRESS,
-        # but event 1 continues the next sequence and
-        # is represented in full
-        *event_1,
         settings.vocab.TICK,
-        # event 2
         *event_2,
+        *event_3,
     ]
     seq_2 = tokens_to[2]
     assert seq_2 == [
         # special
         settings.vocab.AUTOREGRESS,
-        # event 2 appeared in full, so we start with event 3
-        *event_3,
         settings.vocab.TICK,
-        # event 4
         *event_4,
+        *event_5,
     ]
     seq_3 = tokens_to[3]
     assert seq_3 == [
         # special
         settings.vocab.AUTOREGRESS,
-        *event_5,
         settings.vocab.TICK,
         *event_6,
+        *event_7,
     ]
     seq_4 = tokens_to[4]
     assert seq_4 == [
         # special
         settings.vocab.AUTOREGRESS,
-        *event_7,
         settings.vocab.TICK,
         # event 8 comes 50 midi ticks after tick token
         # there is a 50 midi tick rest after event 7
         *event_8,
+        settings.vocab.TICK,
+        # 9 is cut off! Not enough room
+        # this is the truncation
+        *event_9[:2],
     ]
     seq_5 = tokens_to[5]
     assert seq_5 == [
         settings.vocab.AUTOREGRESS,
-        # now the tick is at the front, that's just how it turned out
-        # with the context length
-        settings.vocab.TICK,
+        # because 9 was cut off, we want it to be the thing that starts
+        # the next sequence
         *event_9,
         *event_10,
+        settings.vocab.TICK,
     ]
     seq_6 = tokens_to[6]
     assert seq_6 == [
         settings.vocab.AUTOREGRESS,
-        settings.vocab.TICK,
         *event_11,
         *event_12,
+        settings.vocab.TICK,
     ]
     seq_7 = tokens_to[7]
     assert seq_7 == [
         settings.vocab.AUTOREGRESS,
-        settings.vocab.TICK,
         *event_13,
         *event_14,
+        settings.vocab.TICK,
     ]
     seq_8 = tokens_to[8]
     assert seq_8 == [
         settings.vocab.AUTOREGRESS,
-        settings.vocab.TICK,
         *event_15,
         settings.vocab.TICK,
-        # second truncation
-        *event_16[:2],
+        *event_16,
     ]
     seq_9 = tokens_to[9]
     assert seq_9 == [
         settings.vocab.AUTOREGRESS,
-        # continue the truncated event from previous sequence
-        *event_16,
         *event_17,
-        # tick is now at the end
         settings.vocab.TICK,
+        *event_18,
     ]
     seq_10 = tokens_to[10]
     assert seq_10 == [
         settings.vocab.AUTOREGRESS,
-        *event_18,
         *event_19,
         settings.vocab.TICK,
+        *event_20,
     ]
     seq_11 = tokens_to[11]
     assert seq_11 == [
         settings.vocab.AUTOREGRESS,
-        *event_20,
         *event_21,
         settings.vocab.TICK,
+        *event_22,
     ]
     seq_12 = tokens_to[12]
     assert seq_12 == [
         settings.vocab.AUTOREGRESS,
-        *event_22,
         settings.vocab.TICK,
         *event_23,
+        *event_24,
     ]
     seq_13 = tokens_to[13]
     assert seq_13 == [
         settings.vocab.AUTOREGRESS,
-        *event_24,
         settings.vocab.TICK,
         *event_25,
+        *event_26,
     ]
     seq_14 = tokens_to[14]
     assert seq_14 == [
         settings.vocab.AUTOREGRESS,
-        *event_26,
         settings.vocab.TICK,
         *event_27,
+        *event_28,
     ]
 
     # this sequence won't appear in the dataset, we have the setting
@@ -715,7 +1042,7 @@ def test_sequence_boundaries_for_truncated_end_triple(c_major_midi_path: Path) -
     seq_15 = tokens_to[15]
     assert seq_15 == [
         settings.vocab.AUTOREGRESS,
-        *event_28,
+        settings.vocab.SEPARATOR,
     ]
 
     # check reconstructing the events
@@ -734,7 +1061,7 @@ def test_sequence_boundaries_for_truncated_end_triple(c_major_midi_path: Path) -
         events=parsed_events,
         delta=settings.delta,
         time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / "c_major_with_ticks.html"),
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
         auto_open=False,
     )
 
@@ -750,12 +1077,12 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
-        tick_token_frequency_in_midi_ticks=100,
+        tick_token_every_n_ticks=100,
         # 3 tranpositions that will work, one that will fail - our implementation
         # should be able to handle the one that pushes notes out of bounds - it
         # should just ignore it
         augmentation_pitch_shifts=(-3, -2, -1, 1, 2, 3, 127),
+        do_clip_overlapping_durations_in_midi_conversion=False,
     )
     tokens_to = []
     stats: TokenizationStatSummary = v2_tokenize(
@@ -987,8 +1314,17 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
     ]
     for i, seq in enumerate(tokens_to):
         assert len(seq) == settings.context_size
+        # ensure every context starts with the flag token
         assert seq[0] == settings.vocab.AUTOREGRESS
-        assert seq[1] == settings.vocab.SEPARATOR
+
+        # parse events
         parsed_events = Event.from_token_seq(seq, settings)
         notes = [x.note().name for x in parsed_events if x.is_note_event()]
         assert notes == expected_note_names[i]
+
+    all_tokens = [x for b in tokens_to for x in b]
+
+    # should be 1 separator for every transposition
+    # there are 6 alterations, 1 original
+    num_sep_tokens = all_tokens.count(settings.vocab.SEPARATOR)
+    assert num_sep_tokens == 7

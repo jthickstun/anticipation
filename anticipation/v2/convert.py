@@ -86,9 +86,13 @@ def midi_to_compound(
             except TypeError as e:
                 # throws a type error if abs(offset) > 127
                 raise SymusicRuntimeError(
-                    f"pitch_transpose is too large, got value: {pitch_transpose}. Recall that there are only 128 valid MIDI note values. Original exception from symusic: "
+                    f"pitch_transpose is too large, got value: {pitch_transpose}. "
+                    f"There are only 128 valid MIDI note values. Original exception from symusic: "
                     + str(e)
                 )
+
+        if settings.do_clip_overlapping_durations_in_midi_conversion:
+            track.notes.sort(key=lambda note: (note.pitch, note.time), inplace=True)
 
         for note in track.notes:
             on_set_time_in_ticks = round(time_resolution * note.time)
@@ -98,18 +102,38 @@ def midi_to_compound(
             # (abs_time, onset, duration, pitch, instrument, velocity)
             # in mido, tracks are 'merged' by converting each event to
             # absolute time in ticks, and then sorting by that absolute value
-            compounds.append(
-                (
-                    # need to sort by unquantized time for parity with v1
-                    note.time,
-                    # --- these are properties we keep for tokenization ---
-                    on_set_time_in_ticks,
-                    duration_time_in_ticks,
-                    pitch,
-                    instr,
-                    velocity,
-                )
-            )
+            to_add = [
+                # need to sort by unquantized time for parity with v1
+                note.time,
+                # --- these are properties we keep for tokenization ---
+                on_set_time_in_ticks,
+                duration_time_in_ticks,
+                pitch,
+                instr,
+                velocity,
+            ]
+            if not compounds or (to_add != compounds[-1]):
+                # I noticed that there are some MIDI files that, for some reason,
+                # have copies of the SAME event with all the same information...
+                # filter those out whenever possible
+                compounds.append(to_add)
+
+                # also ensure that the same note on the same instrument cannot sustain
+                # if another note plays. This results in weird overlaps in duration
+                if (
+                    settings.do_clip_overlapping_durations_in_midi_conversion
+                    and len(compounds) >= 2
+                ):
+                    prev_c = compounds[-2]
+                    curr_c = compounds[-1]
+                    if prev_c[1] + prev_c[2] > curr_c[1] and (
+                        # ensure pitch is the same
+                        prev_c[3] == curr_c[3]
+                        and
+                        # ensure instrument is same, it should be - but just check
+                        prev_c[4] == curr_c[4]
+                    ):
+                        prev_c[2] = curr_c[1] - prev_c[1]
 
     # mimic mido's sort behavior
     # get the 0th element from the compound, could be faster than a lambda?

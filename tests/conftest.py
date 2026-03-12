@@ -1,5 +1,6 @@
 """Pytest common fixtures and utility functions for test suite."""
 
+import sys
 import tempfile
 import importlib
 from pathlib import Path
@@ -11,7 +12,7 @@ from anticipation.convert import midi_to_compound
 
 # python itself has a top-level module named `tokenize`
 from anticipation.tokenize import tokenize as anticipation_tokenize
-from anticipation.v2.config import AnticipationV2Settings, Vocab
+from anticipation.v2.config import AnticipationV2Settings, Vocab, make_vocab
 
 TestConfigPatcher = Callable[..., None]
 
@@ -32,6 +33,16 @@ def c_major_midi_path() -> Path:
     # up until C5.
     # There are 29 notes in total.
     return TEST_DATA_PATH / "cmajor.mid"
+
+
+@pytest.fixture
+def simple_two_instrument_midi_path() -> Path:
+    return TEST_DATA_PATH / "simple_2_instrument.mid"
+
+
+@pytest.fixture
+def dense_drums_sparse_piano_midi_path() -> Path:
+    return TEST_DATA_PATH / "dense_drums_sparse_piano.mid"
 
 
 @pytest.fixture
@@ -200,45 +211,10 @@ def get_tokens_from_text_file(tokens_file: Path) -> list[list[int]]:
 
 @pytest.fixture
 def local_midi_vocab() -> Vocab:
-    return Vocab(
-        # events
-        # (time, duration, note x instrument)
-        EVENT_OFFSET=0,
-        # (time: 0-100, at most 1 tick apart)
-        TIME_OFFSET=0,
-        # (duration: 100-1100, at most 1000 ticks, longest note)
-        DUR_OFFSET=100,
-        NOTE_OFFSET=1100,
-        # there are 128 notes, 129 program codes, so
-        # the total number of tokens for this (note x instrument) combo
-        # is 128 * 129 = 16,512
-        # so the space of notes spans from:
-        #  1,100: instrument 0, note 0
-        #  1,101: instrument 0, note 1
-        #  1,227: instrument 0, note 127
-        #  1,228: instrument 1, note 0
-        #  ...
-        #  1,355: instrument 1, note 127
-        #  ...
-        # 17,484: instrument 128, note 0
-        # 17,611: instrument 128, note 127
-        # ^ (the largest possible instr x note token)
-        # ...
-        #
-        TICK=17612,
-        # controls, start directly after event space ends
-        CONTROL_OFFSET=17613,
-        # (time, dur, notes) same thing as events but with
-        # an offset
-        ATIME_OFFSET=17613,
-        ADUR_OFFSET=17713,
-        ANOTE_OFFSET=18713,
-        ATICK=18713 + 17612 + 1,
-        # ...
-        SPECIAL_OFFSET=35225,
-        SEPARATOR=35225,
-        AUTOREGRESS=35226,
-        ANTICIPATE=35227,
+    return make_vocab(
+        tick_token_every_n_ticks=100,
+        max_note_duration_in_seconds=10,
+        time_resolution=100,
     )
 
 
@@ -248,10 +224,13 @@ def local_midi_settings_ar_only(local_midi_vocab: Vocab) -> AnticipationV2Settin
         num_autoregressive_seq_per_midi_file=1,
         num_span_anticipation_augmentations_per_midi_file=0,
         num_instrument_anticipation_augmentations_per_midi_file=0,
-        num_random_anticipation_augmentations_per_midi_file=0,
         vocab=local_midi_vocab,
-        tick_token_frequency_in_midi_ticks=100,
+        tick_token_every_n_ticks=100,
         num_workers_in_dataset_construction=10,
         # toggle for cap on instruments
         # max_track_instruments=129,
     )
+
+
+def get_current_function_name() -> str:
+    return sys._getframe(1).f_code.co_name  # noqa

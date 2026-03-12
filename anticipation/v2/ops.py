@@ -4,9 +4,8 @@ Their functionality is the same as v1 ops unless stated otherwise.
 """
 
 from collections import defaultdict
-from typing import Optional, Union, Iterator
-
-import numpy as np
+from itertools import chain
+from typing import Optional, Union, Iterator, Iterable
 
 from anticipation.v2.config import AnticipationV2Settings
 from anticipation.v2.types import Token
@@ -236,105 +235,10 @@ def add_rests(
 # --- NEW TO V2 BELOW THIS LINE ---
 
 
-def relativize_token_seq_time(
-    seq: list[Token], settings: AnticipationV2Settings
-) -> list[Token]:
-    # shift all the time tokens in the sequence to 0
-    # relative to the first time in the sequence
-    return translate(
-        seq, -min_time(seq, settings, seconds=False), settings, seconds=False
-    )
-
-
-def streaming_anticipate(
-    events: Iterator[tuple[Token, ...]],
-    controls: Iterator[tuple[Token, ...]],
-    settings: AnticipationV2Settings,
-) -> Iterator[tuple[Token, ...]]:
-    """
-    Interleave a sequence of events with anticipated controls.
-
-    Inputs:
-      events   : a sequence of events
-      controls : a sequence of time-localized controls
-      settings    : anticipation v2 global settings object
-
-    Returns:
-        a generator that returns interleaved events and controls by anticipatory
-        ordering that may be consumed as a stream
-    """
-    if isinstance(events, list):
-        raise TypeError(
-            "Streaming anticipate must take iterators, not lists. The event argument is a list."
-        )
-    if isinstance(controls, list):
-        raise TypeError(
-            "Streaming anticipate must take iterators, not lists. The controls argument is a list."
-        )
-
-    delta_ticks = settings.delta * settings.time_resolution
-    curr_control = next(controls, None)
-    if curr_control is None:
-        # no controls exist, just iterate over events
-        # return the iterator object
-        return events
-
-    controls = list(controls)
-    first_control_time = float("inf")
-    for c in controls:
-        if len(c) == 3:
-            first_control_time = c[0] - settings.vocab.ATIME_OFFSET
-            break
-        else:
-            continue
-
-    control_time = first_control_time
-    num_ticks_seen = 0
-    num_control_ticks_seen = 0
-
-    for cur_event in events:
-        if len(cur_event) == 3:
-            # a triple
-            time, dur, note = cur_event
-            event_time = time - settings.vocab.TIME_OFFSET
-            assert note < settings.vocab.CONTROL_OFFSET
-        else:
-            # a tick
-            assert cur_event[0] == settings.vocab.TICK
-            event_time = num_ticks_seen * settings.tick_token_frequency_in_midi_ticks
-            num_ticks_seen += 1
-
-        while event_time >= control_time - delta_ticks:
-            yield curr_control
-            if controls:
-                curr_control = controls[0]
-                controls = controls[1:]
-            else:
-                curr_control = None
-
-            if curr_control is None:
-                control_time = float("inf")
-            elif len(curr_control) == 1:
-                control_time = (settings.time_resolution * settings.delta) + num_control_ticks_seen * settings.tick_token_frequency_in_midi_ticks
-                num_control_ticks_seen += 1
-            elif len(curr_control) == 3:
-                control_time = curr_control[0] - settings.vocab.ATIME_OFFSET
-            else:
-                raise ValueError("Invalid size for control")
-
-        print(cur_event)
-        yield cur_event
-
-    if control_time < float("inf"):
-        for cur_control in controls:
-            yield cur_control
-
-
 def streaming_add_ticks(
     events: list[Token], settings: AnticipationV2Settings
 ) -> Iterator[tuple[Token, ...]]:
-    # TODO: should this take an iterator as input? THinking...
-    add_every = settings.tick_token_frequency_in_midi_ticks
+    add_every = settings.tick_token_every_n_ticks
     recent_tick = 0
 
     # original logic: https://github.com/jthickstun/anticipation/blob/6927699c5243fd91d1d252211c29885377d9dda5/train/tokenize-new.py#L33
@@ -354,33 +258,42 @@ def streaming_add_ticks(
         )
 
 
+def streaming_add_separator(
+    token_stream_iterator: Iterator[tuple[Token, ...]],
+    settings: AnticipationV2Settings,
+) -> Iterator[tuple[Token, ...]]:
+    return chain(token_stream_iterator, [(settings.vocab.SEPARATOR,)])
+
+
 def streaming_relativize_to_tick(
-    token_stream_iterator: Iterator[tuple[Token, ...]], settings: AnticipationV2Settings
+    token_stream_iterator: Iterator[tuple[Token, ...]],
+    settings: AnticipationV2Settings,
+    start_from_tick: int = -1,
 ) -> Iterator[tuple[Token, ...]]:
     if isinstance(token_stream_iterator, list):
         raise TypeError(
             "Streaming relativize must take iterators, not lists. The token_stream_iterator argument is a list."
         )
 
-    add_every = settings.tick_token_frequency_in_midi_ticks
-    forward_ticks = 0
-    recent_tick = 0
+    add_every = settings.tick_token_every_n_ticks
+    delta_in_ticks = settings.delta * settings.time_resolution
+
+    recent_tick = start_from_tick
+    elems = []
     for next_element in token_stream_iterator:
-        print(next_element)
         if len(next_element) == 1:
             # this is a tick
             recent_tick += 1
             to_add = next_element
         elif len(next_element) == 3:
-            relativize = round((recent_tick - 1) * add_every) if recent_tick > 0 else 0
+            relativize = max(round(recent_tick * add_every), 0)
             if next_element[1] >= settings.vocab.CONTROL_OFFSET:
-                # this is a control
-                relativize += settings.time_resolution * settings.delta
-                if next_element[0] - relativize < settings.vocab.CONTROL_OFFSET:
-                    # ???????
-                    relativize = next_element[0] - settings.vocab.CONTROL_OFFSET
-                    #relativize = (recent_tick + 1) * add_every
-
+                control_abs_time = next_element[0] - settings.vocab.CONTROL_OFFSET
+                if control_abs_time < delta_in_ticks:
+                    # can't move backwards
+                    continue
+                else:
+                    relativize += delta_in_ticks
 
             to_add = (
                 next_element[0] - relativize,
@@ -392,66 +305,101 @@ def streaming_relativize_to_tick(
             # pushed into the control token space
             if next_element[1] >= settings.vocab.CONTROL_OFFSET:
                 # don't let the time be over-subtracted
-                assert to_add[0] >= settings.vocab.CONTROL_OFFSET
-                # # don't let time be under-subtracted
-                assert to_add[0] <= settings.vocab.ADUR_OFFSET
+                assert to_add[0] >= settings.vocab.CONTROL_OFFSET, (
+                    f"!({to_add[0]} >= {settings.vocab.CONTROL_OFFSET})"
+                )
+                # don't let time be under-subtracted
+                assert to_add[0] <= settings.vocab.ADUR_OFFSET, (
+                    f"!({to_add[0]} <= {settings.vocab.ADUR_OFFSET})"
+                )
             else:
                 # don't let the time be over-subtracted
-                assert to_add[0] >= settings.vocab.TIME_OFFSET
+                assert to_add[0] >= settings.vocab.TIME_OFFSET, (
+                    f"!({to_add[0]} >= {settings.vocab.TIME_OFFSET})"
+                )
                 # don't let time be under-subtracted
-                assert to_add[0] <= settings.vocab.DUR_OFFSET
+                assert to_add[0] <= settings.vocab.DUR_OFFSET, (
+                    f"!({to_add[0]} <= {settings.vocab.DUR_OFFSET})"
+                )
         else:
             raise ValueError(
                 f"Incorrect length of event tuple. Must be 1 or 3. Got: {len(next_element)}"
             )
+        elems.append(to_add)
 
-        yield to_add
+    return iter(elems)
 
 
-def extract_spans_v1_style(all_events, settings: AnticipationV2Settings):
+def extract_instruments(
+    all_events: list[Token], instruments: list[int], settings: AnticipationV2Settings
+) -> tuple[list[Token], list[Token]]:
     events = []
     controls = []
-    span = True
-    next_span = end_span = settings.vocab.TIME_OFFSET
+    for time, dur, note in zip(all_events[0::3], all_events[1::3], all_events[2::3]):
+        assert note < settings.vocab.CONTROL_OFFSET  # shouldn't be in the sequence yet
+        assert note not in [
+            settings.vocab.SEPARATOR,
+            settings.vocab.TICK,
+        ]  # these shouldn't either
 
-    ticks_seen = 0
-    for token_tuple in all_events:
-        # if len(token_tuple) == 1:
-        #     abs_time = ticks_seen * settings.tick_token_frequency_in_midi_ticks
-        #     ticks_seen += 1
-        # else:
-        time, dur, note = token_tuple
-        # shouldn't be in the sequence yet
-        assert note not in [settings.vocab.SEPARATOR]
-        abs_time = time
-
-        # end of an anticipated span; decide when to do it again (next_span)
-        if span and abs_time >= end_span:
-            span = False
-            next_span = abs_time + int(
-                settings.time_resolution
-                * np.random.exponential(1.0 / settings.span_anticipation_lambda)
-            )
-
-        # anticipate a 3-second span
-        if (not span) and abs_time >= next_span:
-            span = True
-            end_span = abs_time + settings.delta * settings.time_resolution
-
-        if span:
-            # if len(token_tuple) == 1:
-            #     controls.append((settings.vocab.ATICK,))
-            # else:
-            a_time, a_dur, a_note = token_tuple
+        instr = (note - settings.vocab.NOTE_OFFSET) // 2**7
+        if instr in instruments:
             # mark this event as a control
-            controls.append(
-                (
-                    settings.vocab.CONTROL_OFFSET + a_time,
-                    settings.vocab.CONTROL_OFFSET + a_dur,
-                    settings.vocab.CONTROL_OFFSET + a_note,
-                )
+            controls.extend(
+                [
+                    settings.vocab.CONTROL_OFFSET + time,
+                    settings.vocab.CONTROL_OFFSET + dur,
+                    settings.vocab.CONTROL_OFFSET + note,
+                ]
             )
         else:
-            events.append(token_tuple)
+            events.extend([time, dur, note])
 
     return events, controls
+
+
+### ---- BLOCK ANTICIPATION ----
+def block_anticipation(
+    events_and_ticks: Iterable[tuple[Token, ...]],
+    controls: list[Token],
+    settings: AnticipationV2Settings,
+    start_at_ticks_seen: int = 0,
+):
+    # need to run anticipation where the controls always appear directly after the tick
+    # and those controls condition the sequence for t + delta.
+
+    # events always have ticks within them
+    add_every = settings.tick_token_every_n_ticks
+    assert add_every > 0
+
+    tokens = []
+    event_time = 0
+    control_time = controls[0] - settings.vocab.ATIME_OFFSET
+    delta = settings.delta * settings.time_resolution
+    ticks_seen = start_at_ticks_seen
+    for e in events_and_ticks:
+        if len(e) == 1:
+            # skip the ticks
+            tokens.append(e)
+            tick_time = settings.tick_token_every_n_ticks * ticks_seen
+            next_tick_time = tick_time + settings.tick_token_every_n_ticks
+
+            while next_tick_time >= control_time - delta:
+                tokens.append(tuple(controls[0:3]))
+                controls = controls[3:]  # consume this control
+                control_time = (
+                    controls[0] - settings.vocab.ATIME_OFFSET
+                    if len(controls) > 0
+                    else float("inf")
+                )
+
+            ticks_seen += 1
+            continue
+
+        time, dur, note = e
+
+        assert note < settings.vocab.CONTROL_OFFSET
+        event_time = time - settings.vocab.TIME_OFFSET
+        tokens.append((time, dur, note))
+
+    return tokens

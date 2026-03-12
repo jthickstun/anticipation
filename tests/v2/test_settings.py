@@ -1,10 +1,11 @@
 import tempfile
 from pathlib import Path
-from json import loads
 
 import pytest
 
-from anticipation.v2.config import AnticipationV2Settings, Vocab
+from anticipation.v2.config import AnticipationV2Settings, Vocab, make_vocab
+
+from tests.conftest import local_midi_vocab
 
 
 def test_serialize_anticipation_v2_settings() -> None:
@@ -18,8 +19,8 @@ def test_serialize_anticipation_v2_settings() -> None:
         "debug": False,
         "debug_flush_remaining_token_buffer": False,
         "delta": 5,
+        "do_clip_overlapping_durations_in_midi_conversion": False,
         "event_size": 3,
-        "m": 341,
         "max_midi_instrument": 129,
         "max_midi_pitch": 128,
         "max_note_duration_in_seconds": 10,
@@ -29,12 +30,10 @@ def test_serialize_anticipation_v2_settings() -> None:
         "min_track_time_in_seconds": 10,
         "num_autoregressive_seq_per_midi_file": 1,
         "num_instrument_anticipation_augmentations_per_midi_file": 4,
-        "num_random_anticipation_augmentations_per_midi_file": 4,
         "train_data_split_shuffle_random_seed": 42,
         "num_workers_in_dataset_construction": 1,
-        "num_span_anticipation_augmentations_per_midi_file": 1,
-        "span_anticipation_lambda": 0.05,
-        "tick_token_frequency_in_midi_ticks": 0,
+        "num_span_anticipation_augmentations_per_midi_file": 0,
+        "tick_token_every_n_ticks": 0,
         "time_resolution": 100,
         "vocab": {
             "ADUR_OFFSET": 37513,
@@ -53,7 +52,7 @@ def test_serialize_anticipation_v2_settings() -> None:
         },
     }
     s, _ = settings._get_as_file()
-    assert settings.md5_hash() == "d12e0635b62bd7a827c8455cd402d323"
+    assert settings.md5_hash() == "b0d0dbce322fc3318387b6cc12cf096a"
 
 
 def test_save_load_settings() -> None:
@@ -124,5 +123,76 @@ def test_get_vocab_size(local_midi_vocab: Vocab) -> None:
     assert local_midi_vocab.total_tokens() == 35228
 
 
-# def test_write_settings_file(local_midi_settings_ar_only):
-#     local_midi_settings_ar_only.save_to_disk(Path(__file__).parent)
+def test_make_vocab_with_default_settings() -> None:
+    vocab = make_vocab(
+        tick_token_every_n_ticks=100,
+        max_note_duration_in_seconds=10,
+        time_resolution=100,
+    )
+    assert vocab.EVENT_OFFSET == 0
+    assert vocab.TIME_OFFSET == 0
+    assert vocab.DUR_OFFSET == 100
+    assert vocab.NOTE_OFFSET == 1100
+    assert vocab.TICK == 1100 + (129 * 128)
+    assert vocab.CONTROL_OFFSET == 1100 + (129 * 128) + 1
+    assert vocab.ATIME_OFFSET == vocab.CONTROL_OFFSET
+    assert vocab.ADUR_OFFSET == vocab.CONTROL_OFFSET + vocab.DUR_OFFSET
+    assert vocab.ANOTE_OFFSET == vocab.CONTROL_OFFSET + vocab.NOTE_OFFSET
+    assert vocab.SPECIAL_OFFSET == vocab.ANOTE_OFFSET + (129 * 128)
+    assert vocab.SEPARATOR == 35225
+    assert vocab.AUTOREGRESS == 35226
+    assert vocab.ANTICIPATE == 35227
+    assert vocab.total_tokens() == 35228
+
+
+def test_make_vocab_with_new_tick_frequency() -> None:
+    vocab = make_vocab(
+        # now the max time a token can have is larger, so the vocab ranges
+        # should adjust
+        tick_token_every_n_ticks=250,
+        max_note_duration_in_seconds=10,
+        time_resolution=100,
+    )
+    assert vocab.EVENT_OFFSET == 0
+    assert vocab.TIME_OFFSET == 0
+    assert vocab.DUR_OFFSET == 250
+    assert vocab.NOTE_OFFSET == 1000 + 250
+    assert vocab.TICK == 1000 + 250 + (129 * 128)
+    assert vocab.CONTROL_OFFSET == 1000 + 250 + (129 * 128) + 1
+    assert vocab.ATIME_OFFSET == vocab.CONTROL_OFFSET
+    assert vocab.ADUR_OFFSET == vocab.CONTROL_OFFSET + vocab.DUR_OFFSET
+    assert vocab.ANOTE_OFFSET == vocab.CONTROL_OFFSET + vocab.NOTE_OFFSET
+    assert vocab.SPECIAL_OFFSET == vocab.ANOTE_OFFSET + (129 * 128)
+    assert vocab.SEPARATOR == 35525
+    assert vocab.AUTOREGRESS == 35525 + 1
+    assert vocab.ANTICIPATE == 35525 + 2
+    assert vocab.total_tokens() == 35528
+
+
+def test_realize_vocab_as_array() -> None:
+    vocab = make_vocab(
+        tick_token_every_n_ticks=100,
+        max_note_duration_in_seconds=10,
+        time_resolution=100,
+    )
+    arr = vocab.realize_as_array()
+    assert len(arr) == vocab.total_tokens()
+    assert len(arr) == len(set([x["i"] for x in arr]))
+
+    # should have identical time spaces for event and controls
+    tt = "time"
+    e_times = [str(x["info"]) for x in arr if x["kind"] == tt and not x["is_control"]]
+    c_times = [str(x["info"]) for x in arr if x["kind"] == tt and x["is_control"]]
+    assert set(e_times) == set(c_times)
+
+    # should have identical duration spaces for event and controls
+    tt = "duration"
+    e_durs = [str(x["info"]) for x in arr if x["kind"] == tt and not x["is_control"]]
+    c_durs = [str(x["info"]) for x in arr if x["kind"] == tt and x["is_control"]]
+    assert set(e_durs) == set(c_durs)
+
+    # should have identical (note x instrument) spaces for event and controls
+    tt = "note"
+    e_note = [str(x["info"]) for x in arr if x["kind"] == tt and not x["is_control"]]
+    c_note = [str(x["info"]) for x in arr if x["kind"] == tt and x["is_control"]]
+    assert set(e_note) == set(c_note)

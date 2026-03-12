@@ -24,16 +24,25 @@ def _events_to_df(events: Iterable[Event]) -> pd.DataFrame:
         # idx here is "sequence index order" (input order).
         norm.append(
             (
+                # idx
                 i,
-                # e.midi_time(),
+                # start
                 e.absolute_time,
+                # duration
                 e.midi_duration(),
+                # program
                 e.midi_instrument(),
+                # note
                 e.midi_note(),
+                # note_name
                 e.note().to_name(),
+                # special_code
                 e.special_code,
+                # is_control
                 e.is_control,
+                # original_idx_in_token_seq
                 e.original_idx_in_token_seq,
+                # rel_time_start
                 e.midi_time(),
             )
         )
@@ -85,8 +94,6 @@ def _add_boundaries_to_subplot(
     dfb = df_boundaries.sort_values(by="start", kind="mergesort")
     prev_end = 0
     for row in dfb.to_dict("records"):
-        print(row)
-        zzz = 10
         # special_code = row["special_code"]
         if row["original_idx_in_token_seq"] % 1024 == 0:
             fig.add_shape(
@@ -128,7 +135,7 @@ def _add_boundaries_to_subplot(
                 row=2,
                 col=1,
             )
-        prev_end = max(prev_end, row['end'])
+        prev_end = max(prev_end, row["end"])
 
     first_delta_sec_in_ticks = int(delta * time_resolution)
     fig.add_shape(
