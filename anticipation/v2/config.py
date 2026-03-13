@@ -193,8 +193,14 @@ def make_vocab(
 ) -> Vocab:
     max_note_duration_in_ticks = int(max_note_duration_in_seconds * time_resolution)
     time_offset = 0
-    time_stops_at = time_offset + tick_token_every_n_ticks
-    dur_stops_at = time_stops_at + max_note_duration_in_ticks
+
+    if tick_token_every_n_ticks == 0:
+        # if no tick frequency, revert back to v1's values for these ranges
+        time_stops_at = v1_vocab.DUR_OFFSET
+        dur_stops_at = v1_vocab.NOTE_OFFSET
+    else:
+        time_stops_at = time_offset + tick_token_every_n_ticks
+        dur_stops_at = time_stops_at + max_note_duration_in_ticks
 
     # can't really change these
     max_midi_instrument = 129

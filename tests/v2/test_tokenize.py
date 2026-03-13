@@ -10,6 +10,7 @@ from anticipation.v2.config import (
     AnticipationV2Settings,
     Vocab,
     MIDI_DRUMS_PROGRAM_CODE,
+    make_vocab,
 )
 from anticipation.v2.tokenize import tokenize as v2_tokenize
 from anticipation.v2.tokenize import (
@@ -257,9 +258,10 @@ def test_tokenize_with_ticks_for_lakh_ar(
     )
 
 
-def _check_anticipation_rule_for_controls(
+def _check_anticipation_rule_for_controls_and_token_ranges(
     token_sequences: list[list[Token]], settings: AnticipationV2Settings
 ) -> None:
+    """This runs checks on forms and rules that should be true for all sequences."""
     assert isinstance(token_sequences, list)
     assert len(token_sequences) > 1
     # should be a list of lists of tokens
@@ -271,15 +273,69 @@ def _check_anticipation_rule_for_controls(
         exact_size_tokens_seq = exact_size_tokens_seq[:-1]
     assert all(len(x) == settings.context_size for x in exact_size_tokens_seq)
 
-    parsed_events = Event.from_token_seq(
-        [x for b in token_sequences for x in b], settings
-    )
+    flattened_tokens = [x for b in token_sequences for x in b]
+    max_token_val = settings.vocab.total_tokens() - 1
+    assert all(0 <= x <= max_token_val for x in flattened_tokens)
+    parsed_events = Event.from_token_seq(flattened_tokens, settings)
 
     # rule: controls must always come after a tick, or follow another control
     for i, e in enumerate(parsed_events):
         if e.is_control:
             prev_event = parsed_events[i - 1]
             assert prev_event.is_control or prev_event.is_tick()
+
+    # check the ranges of all tokens
+    for i, e in enumerate(parsed_events):
+        if e.is_note_event():
+            if e.is_control:
+                t, d, ni = e.as_tokens()
+
+                # check relativized
+                if settings.tick_token_every_n_ticks > 0:
+                    assert (
+                        t - settings.vocab.ATIME_OFFSET
+                        < settings.tick_token_every_n_ticks
+                    )
+
+                # check not too long
+                assert d - settings.vocab.ADUR_OFFSET <= int(
+                    settings.max_note_duration_in_seconds * settings.time_resolution
+                )
+
+                # check regions
+                assert t < settings.vocab.ADUR_OFFSET
+                assert d < settings.vocab.ANOTE_OFFSET
+                assert ni < settings.vocab.SPECIAL_OFFSET
+                assert (
+                    settings.vocab.CONTROL_OFFSET
+                    <= settings.vocab.ATIME_OFFSET
+                    <= t
+                    < d
+                    < ni
+                    < settings.vocab.SPECIAL_OFFSET
+                )
+            else:
+                t, d, ni = e.as_tokens()
+
+                # check relativized
+                if settings.tick_token_every_n_ticks > 0:
+                    assert (
+                        t - settings.vocab.TIME_OFFSET
+                        < settings.tick_token_every_n_ticks
+                    )
+
+                # check not too long
+                assert d - settings.vocab.DUR_OFFSET <= int(
+                    settings.max_note_duration_in_seconds * settings.time_resolution
+                )
+
+                # check regions
+                assert t < settings.vocab.DUR_OFFSET
+                assert d < settings.vocab.NOTE_OFFSET
+                assert ni < settings.vocab.TICK
+                assert (
+                    0 <= settings.vocab.TIME_OFFSET <= t < d < ni < settings.vocab.TICK
+                )
 
 
 def test_tokenize_v2_lakh_span_anticipation(
@@ -299,7 +355,7 @@ def test_tokenize_v2_lakh_span_anticipation(
         debug_flush_remaining_token_buffer=True,
     )
     stats = v2_tokenize([lmd_0_example_1_midi_path], tokens_to, settings)
-    _check_anticipation_rule_for_controls(tokens_to, settings)
+    _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
 
     assert not stats.ignored_files
     assert settings.vocab.TICK == 17612
@@ -345,7 +401,7 @@ def test_tokenize_v2_dense_sparse_piano_span_anticipation(
         stats = v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_to, settings)
 
     assert not stats.ignored_files
-    _check_anticipation_rule_for_controls(tokens_to, settings)
+    _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
 
     pe = Event.from_token_seq([x for b in tokens_to for x in b], settings)
 
@@ -385,24 +441,237 @@ def test_tokenize_v2_simple_two_instrument_midi(
     local_midi_vocab: Vocab,
 ) -> None:
     set_seed(0)
+
     tokens_to = []
     settings = AnticipationV2Settings(
         vocab=local_midi_vocab,
+        # very small context for testing boundaries
         context_size=80,
         min_track_events=0,
         min_track_time_in_seconds=0,
         num_autoregressive_seq_per_midi_file=0,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=1,
+        do_clip_overlapping_durations_in_midi_conversion=False,
         tick_token_every_n_ticks=100,
         debug=True,
         debug_flush_remaining_token_buffer=False,
     )
-    stats = v2_tokenize([simple_two_instrument_midi_path], tokens_to, settings)
+    with patch(
+        "anticipation.v2.tokenize.random_time_partition",
+        side_effect=[
+            (1344.4219, (33, 1400)),
+            (2933.7498, (31, 3000)),
+            (4220.5716, (23, 4300)),
+            (5758.9168, (19, 5800)),
+        ],
+    ):
+        # lock in a specific random pattern for choosing span splits
+        stats = v2_tokenize([simple_two_instrument_midi_path], tokens_to, settings)
+
+    _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
+
     assert not stats.ignored_files
     parsed_events = Event.from_token_seq(
         [x for b in [tokens_to[0]] for x in b], settings
     )
+    assert len(parsed_events) == 38
+
+    assert parsed_events[0].as_tokens() == (settings.vocab.ANTICIPATE,)
+    assert parsed_events[1].as_tokens() == (settings.vocab.TICK,)
+
+    e_2 = parsed_events[2]
+    assert e_2.absolute_time == 0
+    assert e_2.midi_time() == 0
+    assert e_2.midi_duration() == 100
+    assert e_2.note().name == "C4"
+    assert e_2.midi_instrument_name() == "Acoustic Grand Piano"
+    assert e_2.midi_instrument() == 0
+    assert e_2.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 100,
+        settings.vocab.NOTE_OFFSET + 72,
+    )
+
+    e_3 = parsed_events[3]
+    assert e_3.absolute_time == 0
+    assert e_3.midi_time() == 0
+    assert e_3.midi_duration() == 400
+    assert e_3.note().name == "E2"
+    assert e_3.midi_instrument_name() == "Piccolo"
+    assert e_3.midi_instrument() == 72
+    assert e_3.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 400,
+        settings.vocab.NOTE_OFFSET + 9_268,
+    )
+
+    e_4 = parsed_events[4]
+    assert e_4.as_tokens() == (settings.vocab.TICK,)
+
+    e_5 = parsed_events[5]
+    assert e_5.absolute_time == 100
+    assert e_5.midi_time() == 0  # relativized to the tick
+    assert e_5.midi_duration() == 100
+    assert e_5.note().name == "B3"
+    assert e_5.midi_instrument() == 0
+    assert e_5.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 100,
+        settings.vocab.NOTE_OFFSET + 71,
+    )
+
+    e_6 = parsed_events[6]
+    assert e_6.as_tokens() == (settings.vocab.TICK,)
+
+    e_7 = parsed_events[7]
+    assert e_7.absolute_time == 200
+    assert e_7.midi_time() == 0  # relativized to the tick
+    assert e_7.midi_duration() == 100
+    assert e_7.note().name == "A#3"
+    assert e_7.midi_instrument() == 0
+    assert e_7.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 100,
+        settings.vocab.NOTE_OFFSET + 70,
+    )
+
+    e_8 = parsed_events[8]
+    assert e_8.as_tokens() == (settings.vocab.TICK,)
+
+    e_9 = parsed_events[9]
+    assert e_9.absolute_time == 300
+    assert e_9.midi_time() == 0  # relativized to the tick
+    assert e_9.midi_duration() == 100
+    assert e_9.note().name == "A3"
+    assert e_9.midi_instrument() == 0
+    assert e_9.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 100,
+        settings.vocab.NOTE_OFFSET + 69,
+    )
+
+    e_10 = parsed_events[10]
+    assert e_10.as_tokens() == (settings.vocab.TICK,)
+
+    e_11 = parsed_events[11]
+    assert e_11.absolute_time == 400
+    assert e_11.midi_time() == 0
+    assert e_11.midi_duration() == 100
+    assert e_11.note().name == "G#3"
+    assert e_11.midi_instrument() == 0
+    assert e_11.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 100,
+        settings.vocab.NOTE_OFFSET + 68,
+    )
+    e_12 = parsed_events[12]
+    assert e_12.absolute_time == 400
+    assert e_12.midi_time() == 0
+    assert e_12.midi_duration() == 400
+    assert e_12.note().name == "F2"
+    assert e_12.midi_instrument() == 72
+    assert e_12.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 400,
+        settings.vocab.NOTE_OFFSET + 9_269,
+    )
+    e_13 = parsed_events[13]
+    assert e_13.as_tokens() == (settings.vocab.TICK,)
+
+    e_14 = parsed_events[14]
+    assert e_14.absolute_time == 500
+    assert e_14.midi_time() == 0
+    assert e_14.midi_duration() == 100
+    assert e_14.note().name == "G3"
+    assert e_14.midi_instrument() == 0
+    assert e_14.as_tokens() == (
+        settings.vocab.TIME_OFFSET + 0,
+        settings.vocab.DUR_OFFSET + 100,
+        settings.vocab.NOTE_OFFSET + 67,
+    )
+
+    # ... few more events...
+
+    # we are most interested in what happens at the very
+    # end when a span happens
+    final_span_token_tuples = []
+    for e in parsed_events[19:]:
+        final_span_token_tuples.append(e.as_tokens())
+
+    assert final_span_token_tuples == [
+        (settings.vocab.TICK,),
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 100,
+            settings.vocab.NOTE_OFFSET + 64,
+        ),
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 400,
+            settings.vocab.NOTE_OFFSET + 9_270,
+        ),
+        (settings.vocab.TICK,),
+        # -- CONTROL ---
+        (
+            # hmm... this should be 0 though
+            settings.vocab.ATIME_OFFSET + 0,
+            settings.vocab.ADUR_OFFSET + 100,
+            settings.vocab.ANOTE_OFFSET + 70,
+        ),
+        # --------------
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 100,
+            settings.vocab.NOTE_OFFSET + 63,
+        ),
+        (settings.vocab.TICK,),
+        # -- CONTROL ---
+        (
+            settings.vocab.ATIME_OFFSET + 0,
+            settings.vocab.ADUR_OFFSET + 100,
+            settings.vocab.ANOTE_OFFSET + 69,
+        ),
+        # --------------
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 100,
+            settings.vocab.NOTE_OFFSET + 62,
+        ),
+        (settings.vocab.TICK,),
+        # -- CONTROL ---
+        (
+            settings.vocab.ATIME_OFFSET + 0,
+            settings.vocab.ADUR_OFFSET + 100,
+            settings.vocab.ANOTE_OFFSET + 68,
+        ),
+        # --------------
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 100,
+            settings.vocab.NOTE_OFFSET + 61,
+        ),
+        (settings.vocab.TICK,),
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 100,
+            settings.vocab.NOTE_OFFSET + 72,
+        ),
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 400,
+            settings.vocab.NOTE_OFFSET + 9_271,
+        ),
+        (settings.vocab.TICK,),
+        (
+            settings.vocab.TIME_OFFSET + 0,
+            settings.vocab.DUR_OFFSET + 100,
+            settings.vocab.NOTE_OFFSET + 71,
+        ),
+        (settings.vocab.TICK,),
+        (settings.vocab.TICK,),
+    ]
+
     get_figure_and_open(
         events=parsed_events,
         delta=settings.delta,
@@ -431,6 +700,9 @@ def test_tokenize_v2_dense_sparse_piano_ar_only(
         debug_flush_remaining_token_buffer=True,
     )
     stats = v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_to, settings)
+
+    _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
+
     assert not stats.ignored_files
     # fills context 3 times, including end buffer
     assert len(tokens_to) == 3
@@ -484,6 +756,9 @@ def test_tokenize_v2_lakh_instrument_anticipation_blockwise(
         )
         tokens_to = []
         stats = v2_tokenize([lmd_0_example_1_midi_path], tokens_to, settings)
+
+        _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
+
         assert not stats.ignored_files
         parsed_events = Event.from_token_seq(
             [x for b in tokens_to for x in b], settings
@@ -607,22 +882,29 @@ def test_tokenize_v2_dense_drums_sparse_piano_instrument_anticipation_blockwise(
 
 
 def test_absolute_time_is_correct_with_ticks(lmd_0_example_1_midi_path: Path) -> None:
-    settings = AnticipationV2Settings(
+    settings_no_ticks = AnticipationV2Settings(
         min_track_events=1,
-        vocab=Vocab(),
+        vocab=make_vocab(
+            tick_token_every_n_ticks=0,
+            max_note_duration_in_seconds=5,
+            time_resolution=100,
+        ),
         # AR only
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
         debug=True,
+        tick_token_every_n_ticks=0,
     )
     # tokenize and parse without ticks added
     events_without_ticks = []
-    stats = v2_tokenize([lmd_0_example_1_midi_path], events_without_ticks, settings)
+    stats = v2_tokenize(
+        [lmd_0_example_1_midi_path], events_without_ticks, settings_no_ticks
+    )
     assert len(events_without_ticks) == 8
     assert not stats.ignored_files
     events_without_ticks = Event.from_token_seq(
-        [x for b in events_without_ticks for x in b], settings
+        [x for b in events_without_ticks for x in b], settings_no_ticks
     )
     events_without_ticks = [
         x
@@ -632,10 +914,29 @@ def test_absolute_time_is_correct_with_ticks(lmd_0_example_1_midi_path: Path) ->
 
     # tokenize and parse WITH ticks added
     events_include_ticks = []
-    stats = v2_tokenize([lmd_0_example_1_midi_path], events_include_ticks, settings)
+    settings_with_ticks = AnticipationV2Settings(
+        min_track_events=1,
+        vocab=make_vocab(
+            100,
+            settings_no_ticks.max_note_duration_in_seconds,
+            settings_no_ticks.time_resolution,
+        ),
+        # AR only
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        debug=True,
+        tick_token_every_n_ticks=100,
+    )
+    stats = v2_tokenize(
+        [lmd_0_example_1_midi_path], events_include_ticks, settings_with_ticks
+    )
     assert not stats.ignored_files
+    _check_anticipation_rule_for_controls_and_token_ranges(
+        events_include_ticks, settings_with_ticks
+    )
     events_include_ticks = Event.from_token_seq(
-        [x for b in events_include_ticks for x in b], settings
+        [x for b in events_include_ticks for x in b], settings_with_ticks
     )
     events_include_ticks = [
         x
@@ -708,6 +1009,8 @@ def test_sequence_packing_file_correctness(
     assert lmd_0_example_1_actual_events[0] == lmd_0_example_1_expected_events[0]
     assert lmd_0_example_1_actual_events == lmd_0_example_1_expected_events
     assert lmd_0_example_1_actual_tokens == lmd_0_example_1_expected_tokens
+
+    _check_anticipation_rule_for_controls_and_token_ranges(in_memory_tokens, settings)
 
     # test saving data to disk is exactly same as in-memory
     with tempfile.TemporaryDirectory() as td:
@@ -1321,6 +1624,8 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
         parsed_events = Event.from_token_seq(seq, settings)
         notes = [x.note().name for x in parsed_events if x.is_note_event()]
         assert notes == expected_note_names[i]
+
+    _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
 
     all_tokens = [x for b in tokens_to for x in b]
 

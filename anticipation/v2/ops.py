@@ -373,7 +373,6 @@ def block_anticipation(
     assert add_every > 0
 
     tokens = []
-    event_time = 0
     control_time = controls[0] - settings.vocab.ATIME_OFFSET
     delta = settings.delta * settings.time_resolution
     ticks_seen = start_at_ticks_seen
@@ -384,7 +383,7 @@ def block_anticipation(
             tick_time = settings.tick_token_every_n_ticks * ticks_seen
             next_tick_time = tick_time + settings.tick_token_every_n_ticks
 
-            while next_tick_time >= control_time - delta:
+            while next_tick_time > control_time - delta:
                 tokens.append(tuple(controls[0:3]))
                 controls = controls[3:]  # consume this control
                 control_time = (
@@ -399,7 +398,6 @@ def block_anticipation(
         time, dur, note = e
 
         assert note < settings.vocab.CONTROL_OFFSET
-        event_time = time - settings.vocab.TIME_OFFSET
         tokens.append((time, dur, note))
 
     return tokens

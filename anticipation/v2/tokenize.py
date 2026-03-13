@@ -1,12 +1,13 @@
-from tqdm import tqdm
 from typing import Optional, Iterable, Union, Iterator
-from collections import defaultdict
-from pathlib import Path
-from dataclasses import dataclass, fields
-import warnings
-from bisect import bisect_right
-import random
 
+from bisect import bisect_right
+from collections import defaultdict
+from dataclasses import dataclass, fields
+from pathlib import Path
+import random
+import warnings
+
+from tqdm import tqdm
 import numpy as np
 
 from anticipation.v2 import ops as v2_ops
@@ -151,7 +152,7 @@ class TokenizationStatSummary:
 
 
 class TokenStream(Iterator[tuple[Token, ...]]):
-    def __init__(self, stream, settings: AnticipationV2Settings):
+    def __init__(self, stream, settings: AnticipationV2Settings) -> None:
         assert not isinstance(stream, list), (
             "TokenStream input must be lazy iterator, not list."
         )
@@ -164,7 +165,9 @@ class TokenStream(Iterator[tuple[Token, ...]]):
     def __next__(self) -> tuple[Token, ...]:
         return next(self._stream)
 
-    def transform(self, control_prefix, tokens):
+    def transform(
+        self, control_prefix: tuple[Token, ...], tokens: list[tuple[Token, ...]]
+    ) -> list[tuple[Token, ...]]:
         return tokens
 
 
@@ -193,7 +196,7 @@ def random_time_partition(
 
 
 class SpanV2TokenStream(TokenStream):
-    def __init__(self, stream, settings: AnticipationV2Settings):
+    def __init__(self, stream, settings: AnticipationV2Settings) -> None:
         super().__init__(stream, settings)
         self._prefix = []
         self._num_ticks = -1
@@ -278,6 +281,18 @@ class SpanV2TokenStream(TokenStream):
         return realized_tokens
 
 
+def is_control(token_logical_group, settings: AnticipationV2Settings) -> bool:
+    if not len(token_logical_group) == 3:
+        return False
+
+    t, d, ni = token_logical_group
+    return (
+        t >= settings.vocab.ATIME_OFFSET
+        and d >= settings.vocab.ADUR_OFFSET
+        and ni >= settings.vocab.ANOTE_OFFSET
+    )
+
+
 class SequencePacker:
     """Buffer-like coordinator that flushes tokens to a file or just accumulates them to a list.
 
@@ -295,11 +310,12 @@ class SequencePacker:
     ) -> None:
         self._settings = settings
         self._iterator_queue: list[tuple[tuple[Token, ...], TokenStream]] = []
-        self._buf = []
+
         if isinstance(target, list):
+            # writing to in memory list
             self._target = target
         elif isinstance(target, Path):
-            # self._buf = []
+            # writing to a file
             # target may not exist yet, but the folder that
             # contains it should
             assert target.parent.exists()
@@ -313,10 +329,9 @@ class SequencePacker:
             raise TypeError("Must have path or list as target.")
 
         self._target: Union[list, TokenSequenceBinaryFile]
-        self._most_recent_control_prefix = ()
-        self._num_tokens_left_in_buffer = 0
 
         # stats
+        self._num_tokens_left_in_buffer = 0
         self._total_seq_written = 0
         self._total_times_end_triple_was_truncated = 0
         self._total_time_in_midi_ticks_written = 0
@@ -333,15 +348,13 @@ class SequencePacker:
         tokenized_file: TokenStream,
     ) -> None:
         # assumption: this is called once per file augmentation
-        # tokenized_file is not split in the middle and does not continue some previous
-        # sequence
         self._iterator_queue.append((control_prefix, tokenized_file))
 
     def write_sequences(self) -> None:
         for seq in self._pack_and_iter_seq():
             self._write_seq(seq)
 
-    def _pack_and_iter_seq(self):
+    def _pack_and_iter_seq(self) -> Iterable[list[Token]]:
         current_fragments = defaultdict(list)
         current_len = 0
 
@@ -356,6 +369,12 @@ class SequencePacker:
         for control_prefix, doc in self._iterator_queue:
             # go through each logical grouping of tokens in the doc
             for tup in doc:
+                if is_control(tup, self._settings) and current_len == 0:
+                    # if this is the first non-flag token in the buffer, and
+                    # it is a control, ensure it follows a tick
+                    current_fragments[doc].append((self._settings.vocab.TICK,))
+                    current_len += 1
+
                 # each group must be associated with its parent document
                 # because the parent document might need to transform it
                 current_fragments[doc].append(tup)
@@ -377,13 +396,18 @@ class SequencePacker:
                     my_seq = [*control_prefix, *buf][: self._settings.context_size]
                     yield my_seq
 
-                    end_token = mutated_tokens[-1]
+                    end_token: tuple[Token, ...] = mutated_tokens[-1]
                     if my_seq[-len(end_token) :] != list(end_token):
                         # truncation happened, keep the end token
                         # which was already transformed
                         self._total_times_end_triple_was_truncated += 1
                         buf = list(end_token)
+
+                        # enforce rule that control always follows tick
+                        if is_control(end_token, self._settings):
+                            buf.insert(0, self._settings.vocab.TICK)
                     else:
+                        # nothing was cut off, buffer can be blank
                         buf = []
 
                     # Reset state
@@ -396,23 +420,24 @@ class SequencePacker:
         # any remaining tokens
         self._num_tokens_left_in_buffer = len(buf)
 
-        # 4. Flush any remaining tokens in a final, partial window
-        if self._settings.debug_flush_remaining_token_buffer:
-            if current_len > 0:
-                # control_prefix is the same as whatever last
-                # document's was
-                for d, tokens in current_fragments.items():
-                    # apply transform
-                    mutated_tokens = d.transform(control_prefix, tokens)
-                    # flatten and add to context
-                    buf.extend([x for b in mutated_tokens for x in b])
+        # if the settings request it and there are remaining tokens, push
+        # them to the sink so we can inspect them
+        if self._settings.debug_flush_remaining_token_buffer and current_len > 0:
+            # control_prefix is the same as whatever last
+            # document's was
+            for d, tokens in current_fragments.items():
+                # apply transform
+                mutated_tokens = d.transform(control_prefix, tokens)
+                # flatten and add to context
+                buf.extend([x for b in mutated_tokens for x in b])
 
-                to_return = [*control_prefix, *buf][: self._settings.context_size]
-                # we lost nothing in the buffer
-                self._num_tokens_left_in_buffer = 0
+            to_return = [*control_prefix, *buf][: self._settings.context_size]
 
-                # return it
-                yield to_return
+            # we lost nothing in the buffer
+            self._num_tokens_left_in_buffer = 0
+
+            # return it
+            yield to_return
 
     def _write_seq(self, buf: list[Token]) -> None:
         """
@@ -422,6 +447,10 @@ class SequencePacker:
         # copy, just for safety since buf is mutated a lot
         local_copy = []
         abs_time_in_ticks = 0
+
+        max_token_val = self._settings.vocab.total_tokens() - 1
+
+        token: int
         for i, token in enumerate(buf):
             if token == self._settings.vocab.TICK:
                 abs_time_in_ticks += self._settings.tick_token_every_n_ticks
@@ -429,6 +458,9 @@ class SequencePacker:
                 # keep a running counter of occurrences of some
                 # special tokens of interest
                 self._token_counter[token] += 1
+
+            assert 0 <= token <= max_token_val
+
             local_copy.append(token)
 
         self._total_time_in_midi_ticks_written += abs_time_in_ticks

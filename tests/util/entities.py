@@ -172,7 +172,7 @@ class Event:
         dur_offset = v.ADUR_OFFSET if is_control else v.DUR_OFFSET
 
         if midi_note == "REST" or midi_note == v.TICK:
-            # TODO: consider, should REST be special code?
+            # REST appears only in v1 sequences
             note_instr = v.TICK
             note_offset = 0
             assert is_control is False
@@ -358,13 +358,16 @@ class Event:
         return Note(self.midi_note())
 
     def as_tokens(self) -> tuple[Token, ...]:
-        if self.special_code == 1:
+        if self.special_code == EventSpecialCode.AUTOREGRESSIVE_TOKEN:
             return (self.settings.vocab.AUTOREGRESS,)
-        elif self.special_code == 2:
+        elif self.special_code == EventSpecialCode.ANTICIPATION_TOKEN:
             return (self.settings.vocab.ANTICIPATE,)
-        elif self.special_code == 3:
+        elif self.special_code == EventSpecialCode.SEQ_SEPARATION_TOKENS:
             return (self.settings.vocab.SEPARATOR,)
+        elif self.special_code == EventSpecialCode.TICK:
+            return (self.settings.vocab.TICK,)
         else:
+            # not a special token, a triple
             return self.time, self.duration, self.note_instr
 
     def is_rest(self) -> bool:
