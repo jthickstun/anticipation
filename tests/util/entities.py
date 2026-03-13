@@ -380,12 +380,28 @@ class Event:
         return self.special_code == EventSpecialCode.TICK
 
     def is_note_event(self) -> bool:
-        return (
-            self.special_code == EventSpecialCode.TYPICAL_EVENT
-        ) and not self.is_control
+        # NB: a note just means it's a valid triple, it can
+        # also be a control
+        return self.special_code == EventSpecialCode.TYPICAL_EVENT
 
     def is_anticipate(self) -> bool:
         return self.special_code == EventSpecialCode.ANTICIPATION_TOKEN
+
+    def is_separator(self) -> bool:
+        return self.special_code == EventSpecialCode.SEQ_SEPARATION_TOKENS
+
+    def is_musically_equal(self, other) -> bool:
+        if not isinstance(other, Event):
+            return False
+
+        # equality without considering which token space this came from
+        # (event vs. control does not matter)
+        return (
+            self.midi_time() == other.midi_time()
+            and self.midi_duration() == other.midi_duration()
+            and self.midi_note() == other.midi_note()
+            and self.midi_instrument() == other.midi_instrument()
+        )
 
     def __eq__(self, other) -> bool:
         if not isinstance(other, Event):

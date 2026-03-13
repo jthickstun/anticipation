@@ -15,7 +15,6 @@ from anticipation.v2 import ops as v2_ops
 from anticipation.v2.types import (
     MIDIFileIgnoredReason,
     Token,
-    Triplet,
     MIDIProgramCode,
     MIDITick,
 )
@@ -134,7 +133,7 @@ class TokenizationStatSummary:
     num_given_files: int
     num_tokenized_files: int
     num_sequences: int
-    num_times_end_triple_was_truncated: int
+    num_times_end_was_truncated: int
     num_tick_tokens: int
     num_separator_tokens: int
     num_autoregress_tokens: int
@@ -152,12 +151,22 @@ class TokenizationStatSummary:
 
 
 class TokenStream(Iterator[tuple[Token, ...]]):
-    def __init__(self, stream, settings: AnticipationV2Settings) -> None:
+    def __init__(
+        self,
+        stream: Iterator[tuple[Token, ...]],
+        settings: AnticipationV2Settings,
+        control_prefix: tuple[Token, ...],
+    ) -> None:
         assert not isinstance(stream, list), (
             "TokenStream input must be lazy iterator, not list."
         )
         self._stream = stream
         self._settings = settings
+
+        assert isinstance(control_prefix, tuple), (
+            "Control prefix must be tuple of tokens"
+        )
+        self.control_prefix = control_prefix
 
     def __iter__(self):
         return self
@@ -165,9 +174,7 @@ class TokenStream(Iterator[tuple[Token, ...]]):
     def __next__(self) -> tuple[Token, ...]:
         return next(self._stream)
 
-    def transform(
-        self, control_prefix: tuple[Token, ...], tokens: list[tuple[Token, ...]]
-    ) -> list[tuple[Token, ...]]:
+    def transform(self, tokens: list[tuple[Token, ...]]) -> list[tuple[Token, ...]]:
         return tokens
 
 
@@ -196,15 +203,21 @@ def random_time_partition(
 
 
 class SpanV2TokenStream(TokenStream):
-    def __init__(self, stream, settings: AnticipationV2Settings) -> None:
-        super().__init__(stream, settings)
-        self._prefix = []
+    def __init__(
+        self,
+        stream: Iterator[tuple[Token, ...]],
+        settings: AnticipationV2Settings,
+        control_flag: tuple[Token, ...],
+    ) -> None:
+        super().__init__(stream, settings, control_flag)
         self._num_ticks = -1
 
-    def _decide_events_and_controls(self, tokens: list[tuple[Token, ...]]):
+    def _decide_events_and_controls(
+        self, tokens: list[tuple[Token, ...]]
+    ) -> tuple[list[tuple[Token, ...]], list[Token]]:
         all_times = []
         for i, t in enumerate(tokens):
-            if len(t) == 1:
+            if len(t) != 3:
                 # skip ticks and other special
                 continue
 
@@ -218,12 +231,13 @@ class SpanV2TokenStream(TokenStream):
         # randomly decide where the cut-off between events and controls happens
         chosen_time, pivot_elem = random_time_partition(all_times, delta)
         pivot_idx = pivot_elem[0]
+
         events = []
         controls = []
         control_offset = self._settings.vocab.CONTROL_OFFSET
         for i, x in enumerate(tokens):
-            if len(x) == 1:
-                # is a tick
+            if len(x) != 3:
+                # is a tick or sep or other
                 events.append(x)
                 continue
 
@@ -238,46 +252,53 @@ class SpanV2TokenStream(TokenStream):
                     )
                 )
 
-        return events, controls
+        assert len(events) + len(controls) == len(tokens)
 
-    def transform(self, control_prefix: tuple[Token, ...], tokens: list[Triplet]):
+        flattened_controls = [x for b in controls for x in b]
+        return events, flattened_controls
+
+    def transform(self, tokens: list[tuple[Token, ...]]) -> list[tuple[Token, ...]]:
+        unwrapped_num_tokens_start = len([x for b in tokens for x in b])
+
+        # NB: tokens can have ticks in it, this is necessary
+        # because we need to keep the number of tokens consistent after we
+        # apply anticipation on a block before using it as a sequence... if we
+        # add ticks after it has filled the context, then it becomes larger
+        # than the context... and we can't have that
         num_tokens_at_start = len(tokens)
         all_tokens = list(tokens)
-        all_ticks = [x for x in all_tokens if x == (self._settings.vocab.TICK,)]
-        num_ticks = len(all_ticks)
 
-        # step 1: designate events and controls
+        # get the number of ticks
+        num_ticks_at_start = all_tokens.count((self._settings.vocab.TICK,))
+
+        # designate events and controls
         events, controls = self._decide_events_and_controls(all_tokens)
 
-        # unwrap the events to be pure token seq
-        controls = [x for b in controls for x in b]
-
-        # step 2: add ticks to the events
-        # events_and_ticks = v2_ops.streaming_add_ticks(events, self._settings)
-
-        # event_stream = (tuple(events[i:i+3]) for i in range(0, len(events), 3))
-
-        # step 3: anticipate blockwise
-        seq = v2_ops.block_anticipation(
-            events, controls, self._settings, start_at_ticks_seen=self._num_ticks + 1
+        # anticipate
+        stream = v2_ops.block_anticipation(
+            events,
+            controls,
+            self._settings,
+            start_at_ticks_seen=self._num_ticks + 1,
         )
-        # events_and_ticks = v2_ops.streaming_add_ticks(events, self._settings)
 
-        # step 4: relativize the combined sequence
+        # relativize the combined sequence
         stream = v2_ops.streaming_relativize_to_tick(
-            iter(seq), self._settings, start_from_tick=self._num_ticks
+            stream, self._settings, start_from_tick=self._num_ticks
         )
-        # stream = iter(seq)
-        # return controls + events
-
-        self._num_ticks += num_ticks
+        self._num_ticks += num_ticks_at_start
 
         realized_tokens = list(stream)
+        num_ticks_at_end = realized_tokens.count((self._settings.vocab.TICK,))
+        assert num_ticks_at_end == num_ticks_at_start
 
         # ensure that we did not add or remove anything
         assert len(realized_tokens) == num_tokens_at_start
 
-        # return stream
+        unwrapped_num_tokens_end = len([x for b in realized_tokens for x in b])
+        assert unwrapped_num_tokens_start == unwrapped_num_tokens_end
+
+        # return the tokens
         return realized_tokens
 
 
@@ -309,7 +330,7 @@ class SequencePacker:
         settings: AnticipationV2Settings,
     ) -> None:
         self._settings = settings
-        self._iterator_queue: list[tuple[tuple[Token, ...], TokenStream]] = []
+        self._iterator_queue: list[TokenStream] = []
 
         if isinstance(target, list):
             # writing to in memory list
@@ -332,8 +353,8 @@ class SequencePacker:
 
         # stats
         self._num_tokens_left_in_buffer = 0
+        self._num_times_end_was_truncated = 0
         self._total_seq_written = 0
-        self._total_times_end_triple_was_truncated = 0
         self._total_time_in_midi_ticks_written = 0
         self._token_counter = {
             self._settings.vocab.TICK: 0,
@@ -344,29 +365,28 @@ class SequencePacker:
 
     def add_tokenized_file(
         self,
-        control_prefix: tuple[Token, ...],
         tokenized_file: TokenStream,
     ) -> None:
         # assumption: this is called once per file augmentation
-        self._iterator_queue.append((control_prefix, tokenized_file))
+        self._iterator_queue.append(tokenized_file)
 
     def write_sequences(self) -> None:
         for seq in self._pack_and_iter_seq():
             self._write_seq(seq)
 
     def _pack_and_iter_seq(self) -> Iterable[list[Token]]:
+        # starting state
         current_fragments = defaultdict(list)
         current_len = 0
-
         control_prefix = ()
         mutated_tokens = []
-
-        # must be flattened, can't be tuples
         buf: list[Token] = []
 
         # go through each document
         doc: TokenStream
-        for control_prefix, doc in self._iterator_queue:
+        for doc in self._iterator_queue:
+            control_prefix = doc.control_prefix
+
             # go through each logical grouping of tokens in the doc
             for tup in doc:
                 if is_control(tup, self._settings) and current_len == 0:
@@ -388,23 +408,39 @@ class SequencePacker:
                         # very unfortunate - the transform has internal state
                         # I am sorry :(
                         # if there is a better way, we should do that
-                        mutated_tokens = d.transform(control_prefix, tokens)
+                        mutated_tokens = d.transform(tokens)
+
+                        # should not add or remove token groups
+                        assert len(mutated_tokens) == len(tokens)
 
                         # flatten and add to context
                         buf.extend([x for b in mutated_tokens for x in b])
 
-                    my_seq = [*control_prefix, *buf][: self._settings.context_size]
+                    # every sequence must be prefixed with a control
+                    # at the very first sequence in the dataset, we may get
+                    # CONTROL + SEP + CONTROL ...
+                    # so a bit wasteful, but in general we do not assume
+                    my_seq = [*control_prefix, *buf]
+                    did_truncate = len(my_seq) > self._settings.context_size
+                    truncated_part = my_seq[self._settings.context_size :]
+                    my_seq = my_seq[: self._settings.context_size]
                     yield my_seq
 
-                    end_token: tuple[Token, ...] = mutated_tokens[-1]
-                    if my_seq[-len(end_token) :] != list(end_token):
-                        # truncation happened, keep the end token
+                    if did_truncate:
+                        # truncation happened, keep the end token(s)
                         # which was already transformed
-                        self._total_times_end_triple_was_truncated += 1
-                        buf = list(end_token)
+                        self._num_times_end_was_truncated += 1
+
+                        # find the tokens that got truncated, add them to
+                        # the buffer to ensure that the next sequence starts
+                        # with the non-truncated version of them
+                        to_add = v2_ops.get_truncated_token_groups_from_truncated_flat_token_sequence(
+                            truncated_part, mutated_tokens
+                        )
+                        buf = [x for b in to_add for x in b]
 
                         # enforce rule that control always follows tick
-                        if is_control(end_token, self._settings):
+                        if is_control(to_add[-1], self._settings):
                             buf.insert(0, self._settings.vocab.TICK)
                     else:
                         # nothing was cut off, buffer can be blank
@@ -418,7 +454,7 @@ class SequencePacker:
         self._iterator_queue = []
 
         # any remaining tokens
-        self._num_tokens_left_in_buffer = len(buf)
+        self._num_tokens_left_in_buffer = current_len
 
         # if the settings request it and there are remaining tokens, push
         # them to the sink so we can inspect them
@@ -427,17 +463,26 @@ class SequencePacker:
             # document's was
             for d, tokens in current_fragments.items():
                 # apply transform
-                mutated_tokens = d.transform(control_prefix, tokens)
+                mutated_tokens = d.transform(tokens)
+
+                # should not add or remove token groups
+                assert len(mutated_tokens) == len(tokens)
+
                 # flatten and add to context
                 buf.extend([x for b in mutated_tokens for x in b])
 
-            to_return = [*control_prefix, *buf][: self._settings.context_size]
+            to_return = [*control_prefix, *buf]
+
+            # something is wrong if this is larger than the context
+            assert len(to_return) <= self._settings.context_size
 
             # we lost nothing in the buffer
             self._num_tokens_left_in_buffer = 0
 
             # return it
-            yield to_return
+            yield to_return[: self._settings.context_size]
+
+            # (no truncation check because this is the last context window)
 
     def _write_seq(self, buf: list[Token]) -> None:
         """
@@ -459,12 +504,21 @@ class SequencePacker:
                 # special tokens of interest
                 self._token_counter[token] += 1
 
-            assert 0 <= token <= max_token_val
+            assert 0 <= token <= max_token_val, (
+                f"Token out of bounds: (0 <= token ({token}) <= max_token_val ({max_token_val}))"
+            )
 
             local_copy.append(token)
 
         self._total_time_in_midi_ticks_written += abs_time_in_ticks
         self._total_seq_written += 1
+
+        # every sequence must be exactly the context size
+        if not self._settings.debug_flush_remaining_token_buffer:
+            assert len(local_copy) == self._settings.context_size
+
+        # every sequence must start with some control prefix
+        assert local_copy[0] >= self._settings.vocab.SPECIAL_OFFSET
 
         # write it
         self._target.append(local_copy)
@@ -477,7 +531,7 @@ class SequencePacker:
         # and add them up. Nested dicts might make this annoying
         return {
             "num_sequences": self._total_seq_written,
-            "num_times_end_triple_was_truncated": self._total_times_end_triple_was_truncated,
+            "num_times_end_was_truncated": self._num_times_end_was_truncated,
             "num_tick_tokens": self._token_counter[self._settings.vocab.TICK],
             "num_separator_tokens": self._token_counter[self._settings.vocab.SEPARATOR],
             "num_autoregress_tokens": self._token_counter[
@@ -601,32 +655,30 @@ def _make_sequences(
 ) -> None:
     # 1. pure autoregressive sequence
     for _ in range(settings.num_autoregressive_seq_per_midi_file):
-        control_prefix, token_iterator = _get_augmentation_autoregressive(
+        token_iterator = _get_augmentation_autoregressive(
             tokenized_midi.events, settings
         )
-        buf.add_tokenized_file(control_prefix, token_iterator)
+        buf.add_tokenized_file(token_iterator)
 
     # --- augmentations ---
     # 2. instrument anticipation
     for _ in range(settings.num_instrument_anticipation_augmentations_per_midi_file):
-        control_prefix, token_iterator = _get_augmentation_instrument(
+        token_iterator = _get_augmentation_instrument(
             tokenized_midi.events,
             tokenized_midi.all_midi_program_codes,
             settings,
         )
-        buf.add_tokenized_file(control_prefix, token_iterator)
+        buf.add_tokenized_file(token_iterator)
 
     # 3. span anticipations v2 style
     for _ in range(settings.num_span_anticipation_augmentations_per_midi_file):
-        control_prefix, token_iterator = _get_span_augmentation(
-            tokenized_midi.events, settings
-        )
-        buf.add_tokenized_file(control_prefix, token_iterator)
+        token_iterator = _get_span_augmentation(tokenized_midi.events, settings)
+        buf.add_tokenized_file(token_iterator)
 
 
 def _get_augmentation_autoregressive(
     tokens: list[Token], settings: AnticipationV2Settings
-) -> tuple[tuple[Token, ...], TokenStream]:
+) -> TokenStream:
     assert len(tokens) % 3 == 0, "bad length"
 
     if settings.tick_token_every_n_ticks > 0:
@@ -635,20 +687,26 @@ def _get_augmentation_autoregressive(
 
         # relativize
         stream = v2_ops.streaming_relativize_to_tick(events, settings)
-
-        # add sep suffix
-        stream = v2_ops.streaming_add_separator(stream, settings)
     else:
         # when events drop below a certain density, pad them with rests
         # in the style that uses tick tokens, we do not need these
         tokens_with_rests = v2_ops.add_rests(tokens, settings)
         stream = (tokens_with_rests[i : i + 3] for i in range(0, len(tokens), 3))
-        stream = v2_ops.streaming_add_separator(stream, settings)
 
-    return (settings.vocab.AUTOREGRESS,), TokenStream(stream, settings)
+    # add prefix
+    control_flag = (settings.vocab.AUTOREGRESS,)
+    stream = v2_ops.streaming_prefix(
+        stream,
+        # these are together so if they get truncated, we repeat it
+        [(settings.vocab.SEPARATOR, *control_flag)],
+    )
+
+    return TokenStream(stream, settings, control_flag)
 
 
-def _sample_instrument_subset(all_midi_program_codes: list[int]) -> list[int]:
+def _sample_instrument_subset(
+    all_midi_program_codes: list[MIDIProgramCode],
+) -> list[MIDIProgramCode]:
     if len(all_midi_program_codes) <= 1:
         # not really well-defined for this case...
         return []
@@ -662,9 +720,9 @@ def _sample_instrument_subset(all_midi_program_codes: list[int]) -> list[int]:
 
 def _get_augmentation_instrument(
     tokens: list[Token],
-    all_midi_program_codes: list[int],
+    all_midi_program_codes: list[MIDIProgramCode],
     settings: AnticipationV2Settings,
-) -> tuple[tuple[Token, ...], TokenStream]:
+) -> TokenStream:
     assert len(tokens) % 3 == 0, "bad length"
 
     # if we do not add a prefix of some ticks, then we lose
@@ -685,31 +743,43 @@ def _get_augmentation_instrument(
     events_and_ticks = v2_ops.streaming_add_ticks(events, settings)
 
     # anticipate
-    seq = v2_ops.block_anticipation(events_and_ticks, controls, settings)
+    stream = v2_ops.block_anticipation(events_and_ticks, controls, settings)
 
     # relativize
-    stream = v2_ops.streaming_relativize_to_tick(iter(seq), settings)
+    stream = v2_ops.streaming_relativize_to_tick(stream, settings)
 
-    # add sep
-    stream = v2_ops.streaming_add_separator(stream, settings)
+    # add prefix
+    control_flag = (settings.vocab.ANTICIPATE,)
+    stream = v2_ops.streaming_prefix(
+        # these are together so if they get truncated, we repeat it
+        stream,
+        [
+            (settings.vocab.SEPARATOR, *control_flag),
+        ],
+    )
 
-    return (settings.vocab.ANTICIPATE,), TokenStream(stream, settings)
+    return TokenStream(stream, settings, control_flag)
 
 
 def _get_span_augmentation(
     tokens: list[Token],
     settings: AnticipationV2Settings,
-) -> tuple[tuple[Token, ...], TokenStream]:
+) -> TokenStream:
     assert len(tokens) % 3 == 0, "bad length"
 
     # add the ticks first so that the context window does not change
     # when we designate which is a control and which is an event
     events_and_ticks = v2_ops.streaming_add_ticks(tokens, settings)
 
-    # add sep
-    stream = v2_ops.streaming_add_separator(events_and_ticks, settings)
+    # add prefix
+    control_flag = (settings.vocab.ANTICIPATE,)
+    stream = v2_ops.streaming_prefix(
+        events_and_ticks,
+        # these are together so if they get truncated, we repeat it
+        [(settings.vocab.SEPARATOR, *control_flag)],
+    )
 
     # this one has very weird control flow, sorry
     # an operation is performed on the sequence at the moment is it packed /
     # 'flushed' into a sequence length equal to the context
-    return (settings.vocab.ANTICIPATE,), SpanV2TokenStream(stream, settings)
+    return SpanV2TokenStream(stream, settings, control_flag)

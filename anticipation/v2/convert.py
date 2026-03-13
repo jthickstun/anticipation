@@ -92,7 +92,7 @@ def midi_to_compound(
                 )
 
         if settings.do_clip_overlapping_durations_in_midi_conversion:
-            track.notes.sort(key=lambda note: (note.pitch, note.time), inplace=True)
+            track.notes.sort(key=lambda _note: (_note.pitch, _note.time), inplace=True)
 
         for note in track.notes:
             on_set_time_in_ticks = round(time_resolution * note.time)

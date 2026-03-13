@@ -5,61 +5,12 @@ Their functionality is the same as v1 ops unless stated otherwise.
 
 from collections import defaultdict
 from itertools import chain
-from typing import Optional, Union, Iterator, Iterable
+from typing import Optional, Union, Iterator, Iterable, TypeVar
 
 from anticipation.v2.config import AnticipationV2Settings
 from anticipation.v2.types import Token
 
-
-def get_punctuation_tokens_idx(
-    tokens: list[Token], settings: AnticipationV2Settings
-) -> dict[str, int]:
-    # new to v2
-    v = settings.vocab
-    _inspect = ["SEPARATOR", "REST", "ANTICIPATE", "AUTOREGRESS", "TICK"]
-    investigate = {getattr(v, k): 0 for k in _inspect}
-    for i, e in enumerate(tokens):
-        if e in investigate:
-            investigate[e] += 1
-
-    human_readable = {}
-    i = 0
-    for k, v in investigate.items():
-        if v > 0:
-            human_readable[f"{_inspect[i]} ({k})"] = v
-        i += 1
-
-    return human_readable
-
-
-def min_time(
-    tokens: list[Token],
-    settings: AnticipationV2Settings,
-    seconds: bool = True,
-    instr: Optional[int] = None,
-) -> Union[int, float]:
-    mt = None
-    for time, dur, note in zip(tokens[0::3], tokens[1::3], tokens[2::3]):
-        # stop calculating at sequence separator
-        if note == settings.vocab.SEPARATOR:
-            break
-
-        if note < settings.vocab.CONTROL_OFFSET:
-            time -= settings.vocab.TIME_OFFSET
-            note -= settings.vocab.NOTE_OFFSET
-        else:
-            time -= settings.vocab.ATIME_OFFSET
-            note -= settings.vocab.ANOTE_OFFSET
-
-        # min time of a particular instrument
-        if instr is not None and instr != note // 2**7:
-            continue
-
-        mt = time if mt is None else min(mt, time)
-
-    if mt is None:
-        mt = 0
-    return mt / float(settings.time_resolution) if seconds else mt
+T = TypeVar("T")
 
 
 def max_time(
@@ -140,46 +91,6 @@ def translate(
     return new_tokens
 
 
-def anticipate(
-    events: list[Token], controls: list[Token], settings: AnticipationV2Settings
-) -> tuple[list[Token], list[Token]]:
-    """
-    Interleave a sequence of events with anticipated controls.
-
-    Inputs:
-      events   : a sequence of events
-      controls : a sequence of time-localized controls
-      settings    : anticipation v2 global settings object
-
-    Returns:
-      tokens   : interleaved events and anticipated controls
-      controls : unconsumed controls (control time > max_time(events) + delta)
-    """
-
-    if len(controls) == 0:
-        return events, controls
-
-    delta_ticks = settings.delta * settings.time_resolution
-    tokens = []
-    event_time = 0
-    control_time = controls[0] - settings.vocab.ATIME_OFFSET
-    for time, dur, note in zip(events[0::3], events[1::3], events[2::3]):
-        while event_time >= control_time - delta_ticks:
-            tokens.extend(controls[0:3])
-            controls = controls[3:]  # consume this control
-            control_time = (
-                controls[0] - settings.vocab.ATIME_OFFSET
-                if len(controls) > 0
-                else float("inf")
-            )
-
-        assert note < settings.vocab.CONTROL_OFFSET
-        event_time = time - settings.vocab.TIME_OFFSET
-        tokens.extend([time, dur, note])
-
-    return tokens, controls
-
-
 def add_rests(
     tokens: list[Token],
     settings: AnticipationV2Settings,
@@ -238,6 +149,8 @@ def add_rests(
 def streaming_add_ticks(
     events: list[Token], settings: AnticipationV2Settings
 ) -> Iterator[tuple[Token, ...]]:
+    assert len(events) % 3 == 0, "bad length"
+
     add_every = settings.tick_token_every_n_ticks
     recent_tick = 0
 
@@ -258,11 +171,37 @@ def streaming_add_ticks(
         )
 
 
-def streaming_add_separator(
-    token_stream_iterator: Iterator[tuple[Token, ...]],
-    settings: AnticipationV2Settings,
-) -> Iterator[tuple[Token, ...]]:
-    return chain(token_stream_iterator, [(settings.vocab.SEPARATOR,)])
+def streaming_prefix(stream: Iterator[T], prefix: Iterable[T]) -> Iterator[T]:
+    return chain(prefix, stream)
+
+
+def is_triple(
+    logical_group: tuple[Token, ...], settings: AnticipationV2Settings
+) -> bool:
+    if len(logical_group) != 3:
+        return False
+
+    # the triple might not be relativized yet, there are some compositions
+    # that are very long, so the absolute time might be larger than
+    # the maximum token before relativization
+    time, dur, note_instr = logical_group
+    return (
+        dur < settings.vocab.SPECIAL_OFFSET
+        and note_instr < settings.vocab.SPECIAL_OFFSET
+    )
+
+
+def is_control_triple(
+    logical_group: tuple[Token, ...], settings: AnticipationV2Settings
+) -> bool:
+    return is_triple(logical_group, settings) and (
+        # avoid using time for this check (index 0)
+        # because it might not be relativized yet
+        # in lakh there are some samples that are SO LONG that their
+        # un-relativized times are pushed into ranges of things we don't expect
+        logical_group[1] >= settings.vocab.CONTROL_OFFSET
+        and logical_group[2] >= settings.vocab.CONTROL_OFFSET
+    )
 
 
 def streaming_relativize_to_tick(
@@ -279,15 +218,15 @@ def streaming_relativize_to_tick(
     delta_in_ticks = settings.delta * settings.time_resolution
 
     recent_tick = start_from_tick
-    elems = []
     for next_element in token_stream_iterator:
-        if len(next_element) == 1:
+        if next_element == (settings.vocab.TICK,):
             # this is a tick
             recent_tick += 1
             to_add = next_element
-        elif len(next_element) == 3:
+        elif is_triple(next_element, settings):
             relativize = max(round(recent_tick * add_every), 0)
-            if next_element[1] >= settings.vocab.CONTROL_OFFSET:
+            is_control = is_control_triple(next_element, settings)
+            if is_control:
                 control_abs_time = next_element[0] - settings.vocab.CONTROL_OFFSET
                 if control_abs_time < delta_in_ticks:
                     # can't move backwards
@@ -300,10 +239,8 @@ def streaming_relativize_to_tick(
                 next_element[1],
                 next_element[2],
             )
-            # do not catch on the time part of the tuple... in lakh there are
-            # some samples that are SO LONG that their un-relativized times are
-            # pushed into the control token space
-            if next_element[1] >= settings.vocab.CONTROL_OFFSET:
+
+            if is_control:
                 # don't let the time be over-subtracted
                 assert to_add[0] >= settings.vocab.CONTROL_OFFSET, (
                     f"!({to_add[0]} >= {settings.vocab.CONTROL_OFFSET})"
@@ -322,26 +259,20 @@ def streaming_relativize_to_tick(
                     f"!({to_add[0]} <= {settings.vocab.DUR_OFFSET})"
                 )
         else:
-            raise ValueError(
-                f"Incorrect length of event tuple. Must be 1 or 3. Got: {len(next_element)}"
-            )
-        elems.append(to_add)
+            to_add = next_element
 
-    return iter(elems)
+        yield to_add
 
 
 def extract_instruments(
     all_events: list[Token], instruments: list[int], settings: AnticipationV2Settings
 ) -> tuple[list[Token], list[Token]]:
+    assert len(all_events) % 3 == 0, "bad length"
+
     events = []
     controls = []
     for time, dur, note in zip(all_events[0::3], all_events[1::3], all_events[2::3]):
         assert note < settings.vocab.CONTROL_OFFSET  # shouldn't be in the sequence yet
-        assert note not in [
-            settings.vocab.SEPARATOR,
-            settings.vocab.TICK,
-        ]  # these shouldn't either
-
         instr = (note - settings.vocab.NOTE_OFFSET) // 2**7
         if instr in instruments:
             # mark this event as a control
@@ -372,12 +303,16 @@ def block_anticipation(
     add_every = settings.tick_token_every_n_ticks
     assert add_every > 0
 
-    control_time = controls[0] - settings.vocab.ATIME_OFFSET
+    if controls:
+        control_time = controls[0] - settings.vocab.ATIME_OFFSET
+    else:
+        control_time = float("inf")
+
     delta = settings.delta * settings.time_resolution
     ticks_seen = start_at_ticks_seen
     for e in events_and_ticks:
-        if len(e) == 1:
-            # skip the ticks
+        if e == (settings.vocab.TICK,):
+            # special behavior when we encounter a tick
             yield e
             tick_time = settings.tick_token_every_n_ticks * ticks_seen
             next_tick_time = tick_time + settings.tick_token_every_n_ticks
@@ -385,7 +320,9 @@ def block_anticipation(
             while next_tick_time > control_time - delta:
                 next_token_group = tuple(controls[0:3])
                 yield next_token_group
-                controls = controls[3:]  # consume this control
+
+                # consume this control and setup for next one
+                controls = controls[3:]
                 control_time = (
                     controls[0] - settings.vocab.ATIME_OFFSET
                     if len(controls) > 0
@@ -394,7 +331,25 @@ def block_anticipation(
 
             ticks_seen += 1
             continue
+        else:
+            yield e
 
-        time, dur, note = e
-        assert note < settings.vocab.CONTROL_OFFSET
-        yield e
+
+def get_truncated_token_groups_from_truncated_flat_token_sequence(
+    truncated_end: list[Token], token_groups: list[tuple[Token, ...]]
+) -> list[tuple[Token, ...]]:
+    truncated_token_groups = []
+    truncated_part = list(truncated_end)
+    for t in reversed(token_groups):
+        if not truncated_part:
+            break
+
+        if len(truncated_part) < len(t):
+            truncated_token_groups.insert(0, t)
+            break
+
+        if truncated_part[-len(t) :] == list(t):
+            truncated_part = truncated_part[: -len(t)]
+            truncated_token_groups.insert(0, t)
+
+    return truncated_token_groups
