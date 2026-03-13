@@ -364,7 +364,7 @@ def block_anticipation(
     controls: list[Token],
     settings: AnticipationV2Settings,
     start_at_ticks_seen: int = 0,
-):
+) -> Iterator[tuple[Token, ...]]:
     # need to run anticipation where the controls always appear directly after the tick
     # and those controls condition the sequence for t + delta.
 
@@ -372,19 +372,19 @@ def block_anticipation(
     add_every = settings.tick_token_every_n_ticks
     assert add_every > 0
 
-    tokens = []
     control_time = controls[0] - settings.vocab.ATIME_OFFSET
     delta = settings.delta * settings.time_resolution
     ticks_seen = start_at_ticks_seen
     for e in events_and_ticks:
         if len(e) == 1:
             # skip the ticks
-            tokens.append(e)
+            yield e
             tick_time = settings.tick_token_every_n_ticks * ticks_seen
             next_tick_time = tick_time + settings.tick_token_every_n_ticks
 
             while next_tick_time > control_time - delta:
-                tokens.append(tuple(controls[0:3]))
+                next_token_group = tuple(controls[0:3])
+                yield next_token_group
                 controls = controls[3:]  # consume this control
                 control_time = (
                     controls[0] - settings.vocab.ATIME_OFFSET
@@ -396,8 +396,5 @@ def block_anticipation(
             continue
 
         time, dur, note = e
-
         assert note < settings.vocab.CONTROL_OFFSET
-        tokens.append((time, dur, note))
-
-    return tokens
+        yield e

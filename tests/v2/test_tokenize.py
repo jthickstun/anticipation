@@ -27,7 +27,6 @@ from conftest import TEST_DATA_PATH
 
 from tests.conftest import (
     get_current_function_name,
-    save_tokens_as_file,
     get_tokens_from_file,
     VISUALIZATIONS_PATH,
 )
