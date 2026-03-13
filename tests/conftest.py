@@ -234,3 +234,23 @@ def local_midi_settings_ar_only(local_midi_vocab: Vocab) -> AnticipationV2Settin
 
 def get_current_function_name() -> str:
     return sys._getframe(1).f_code.co_name  # noqa
+
+
+def save_tokens_as_file(tokens: list[list[int]], save_to: Path) -> None:
+    assert len(tokens) >= 1
+    assert isinstance(tokens, list)
+    assert isinstance(tokens[0], list)
+    t = ""
+    for token_seq in tokens:
+        t += ",".join(map(str, token_seq)) + "\n"
+    save_to.write_text(t.strip())
+
+
+def get_tokens_from_file(from_path: Path) -> list[list[int]]:
+    assert from_path.is_file()
+    assert from_path.exists()
+    t = from_path.read_text().split("\n")
+    parsed = []
+    for s in t:
+        parsed.append([int(x) for x in s.split(",")])
+    return parsed

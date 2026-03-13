@@ -5,14 +5,13 @@ from unittest.mock import patch
 import numpy as np
 import pytest
 
-from anticipation.v2.types import Token
 from anticipation.v2.config import (
     AnticipationV2Settings,
     Vocab,
     MIDI_DRUMS_PROGRAM_CODE,
     make_vocab,
 )
-from anticipation.v2.tokenize import tokenize as v2_tokenize
+from anticipation.v2.types import Token
 from anticipation.v2.tokenize import (
     MIDIFileIgnoredReason,
     TokenizationStatSummary,
@@ -20,242 +19,20 @@ from anticipation.v2.tokenize import (
     _get_augmentation_instrument,
     TokenizedMIDIFileResult,
     TokenStream,
+    tokenize as v2_tokenize,
 )
 from anticipation.v2.io import TokenSequenceBinaryFile
 from anticipation.v2.util import set_seed
-
-from tests.util.entities import Event, EventSpecialCode, get_note_instrument_token, Note
-from tests.util.visualize_sequence import get_figure_and_open
-from tests.conftest import get_current_function_name
+from conftest import TEST_DATA_PATH
 
 from tests.conftest import (
+    get_current_function_name,
+    save_tokens_as_file,
+    get_tokens_from_file,
     VISUALIZATIONS_PATH,
 )
-
-
-@pytest.fixture
-def lmd_0_example_1_tokens_and_parsed_events(
-    lmd_0_example_1_midi_path: Path,
-) -> tuple[list[list[Token]], list[Event], AnticipationV2Settings]:
-    settings = AnticipationV2Settings(
-        min_track_events=1,
-        vocab=Vocab(),
-        # AR only
-        num_autoregressive_seq_per_midi_file=1,
-        num_instrument_anticipation_augmentations_per_midi_file=0,
-        num_span_anticipation_augmentations_per_midi_file=0,
-        tick_token_every_n_ticks=100,
-        debug=True,
-        debug_flush_remaining_token_buffer=True,
-        do_clip_overlapping_durations_in_midi_conversion=False,
-    )
-    midi_files = [lmd_0_example_1_midi_path]
-    in_memory_tokens = []
-    stats = v2_tokenize(midi_files, in_memory_tokens, settings)
-    assert not stats.ignored_files
-
-    # tokenizing this in full is 9 sequences
-    assert len(in_memory_tokens) == 9
-    # all but the last one has full context, we've set a debug setting to push the
-    # tokens in the buffer that would typically be ignored in a production context
-    assert all((len(x) == settings.context_size for x in in_memory_tokens[:-1]))
-
-    # there are 585 remaining that do not fit exactly into a context window
-    assert len(in_memory_tokens[8]) == 585
-    assert in_memory_tokens[8][-1] == settings.vocab.SEPARATOR
-
-    all_tokens_flattened = [x for b in in_memory_tokens for x in b]
-    assert len(all_tokens_flattened) == 585 + (1024 * 8)
-
-    num_total_separators = 0
-    for i, packed_seq in enumerate(in_memory_tokens):
-        assert packed_seq[0] == settings.vocab.AUTOREGRESS
-        num_total_separators += len(
-            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
-        )
-
-    assert num_total_separators == 1
-    parsed_events = Event.from_token_seq(
-        [x for b in in_memory_tokens for x in b], settings
-    )
-    assert len(parsed_events) == 3045
-    return in_memory_tokens, parsed_events, settings
-
-
-def test_tokenize_v2_lakh_ar_only_for_visualization(
-    lmd_0_example_1_tokens_and_parsed_events: tuple[
-        list[list[Token]], list[Event], AnticipationV2Settings
-    ],
-) -> None:
-    _, parsed_events, settings = lmd_0_example_1_tokens_and_parsed_events
-    get_figure_and_open(
-        events=parsed_events,
-        delta=settings.delta,
-        time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
-        auto_open=False,
-    )
-
-
-def test_tokenize_v2_lakh_ar_local_midi_vocab(
-    lmd_0_example_1_midi_path: Path, local_midi_settings_ar_only: AnticipationV2Settings
-) -> None:
-    in_memory_tokens = []
-    stats = v2_tokenize(
-        [lmd_0_example_1_midi_path], in_memory_tokens, local_midi_settings_ar_only
-    )
-    assert not stats.ignored_files
-    parsed_events = Event.from_token_seq(
-        [x for b in in_memory_tokens for x in b], local_midi_settings_ar_only
-    )
-    get_figure_and_open(
-        events=parsed_events,
-        delta=local_midi_settings_ar_only.delta,
-        time_resolution=local_midi_settings_ar_only.time_resolution,
-        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
-        auto_open=False,
-    )
-
-
-def test_tokenize_v2_lakh_instrument_for_visualization(
-    lmd_0_example_1_midi_path: Path,
-) -> None:
-    instrument_anticipation_sample = []
-    with patch(
-        "anticipation.v2.tokenize.np.random.choice",
-        return_value=[MIDI_DRUMS_PROGRAM_CODE],
-    ):
-        # force the call to np.random.choice to always return [128] for tokenize.py
-        # This means that the instrument code 128 will always be a control. This code
-        # is the drum track for this sample. This makes it much easier to see the
-        # cold start issue
-        settings = AnticipationV2Settings(
-            vocab=Vocab(),
-            num_autoregressive_seq_per_midi_file=0,
-            num_instrument_anticipation_augmentations_per_midi_file=1,
-            num_span_anticipation_augmentations_per_midi_file=0,
-            tick_token_every_n_ticks=100,
-            debug=True,
-            debug_flush_remaining_token_buffer=False,
-        )
-        stats = v2_tokenize(
-            [lmd_0_example_1_midi_path], instrument_anticipation_sample, settings
-        )
-        assert not stats.ignored_files
-
-    assert len(instrument_anticipation_sample) == 8
-    num_total_separators = 0
-    for i, packed_seq in enumerate(instrument_anticipation_sample):
-        assert len(packed_seq) == settings.context_size
-        assert packed_seq[0] == settings.vocab.ANTICIPATE
-
-        num_total_separators += len(
-            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
-        )
-
-    # separator is a suffix now
-    assert num_total_separators == 0
-    parsed_events = Event.from_token_seq(
-        [x for b in instrument_anticipation_sample for x in b], settings
-    )
-    get_figure_and_open(
-        events=parsed_events,
-        delta=settings.delta,
-        time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
-        auto_open=False,
-    )
-
-
-def test_tokenize_with_ticks_for_small_sequence_ar(
-    c_major_midi_path: Path,
-) -> None:
-    settings = AnticipationV2Settings(
-        min_track_events=1,
-        vocab=Vocab(),
-        # AR only
-        num_autoregressive_seq_per_midi_file=1,
-        num_instrument_anticipation_augmentations_per_midi_file=0,
-        num_span_anticipation_augmentations_per_midi_file=0,
-        # force small context for this specific test, otherwise tokens are left in the
-        # buffer
-        context_size=104,
-        debug=True,
-        debug_flush_remaining_token_buffer=False,
-        tick_token_every_n_ticks=100,
-    )
-    tokenized_seq = []
-    stats = v2_tokenize([c_major_midi_path], tokenized_seq, settings)
-    assert not stats.ignored_files
-
-    assert len(tokenized_seq) == 1
-    num_total_separators = 0
-    for i, packed_seq in enumerate(tokenized_seq):
-        assert len(packed_seq) == settings.context_size
-        assert packed_seq[0] == settings.vocab.AUTOREGRESS
-        num_total_separators += len(
-            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
-        )
-
-    parsed_events = Event.from_token_seq(
-        [x for b in tokenized_seq for x in b], settings
-    )
-
-    # check that the ticks are added at specified interval
-    ticks = [x for x in parsed_events if x.is_tick()]
-    ticks_abs_times = [x.absolute_time for x in ticks]
-    assert ticks_abs_times == list(
-        range(0, 1500 + 1, settings.tick_token_every_n_ticks)
-    )
-    get_figure_and_open(
-        events=parsed_events,
-        delta=settings.delta,
-        time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
-        auto_open=False,
-    )
-
-
-def test_tokenize_with_ticks_for_lakh_ar(
-    lmd_0_example_1_midi_path: Path,
-    local_midi_vocab: Vocab,
-) -> None:
-    settings = AnticipationV2Settings(
-        min_track_events=1,
-        vocab=local_midi_vocab,
-        # AR only
-        num_autoregressive_seq_per_midi_file=1,
-        num_instrument_anticipation_augmentations_per_midi_file=0,
-        num_span_anticipation_augmentations_per_midi_file=0,
-        tick_token_every_n_ticks=100,
-        do_clip_overlapping_durations_in_midi_conversion=False,
-        debug=True,
-        debug_flush_remaining_token_buffer=False,
-    )
-    tokenized_seq = []
-    stats = v2_tokenize([lmd_0_example_1_midi_path], tokenized_seq, settings)
-    assert not stats.ignored_files
-    assert len(tokenized_seq) == 8
-    num_total_separators = 0
-    for i, packed_seq in enumerate(tokenized_seq):
-        assert len(packed_seq) == settings.context_size
-        assert packed_seq[0] == settings.vocab.AUTOREGRESS
-        num_total_separators += len(
-            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
-        )
-
-    # the separator is a suffix instead of prefix now
-    assert num_total_separators == 0
-    parsed_events = Event.from_token_seq(
-        [x for b in tokenized_seq for x in b], settings
-    )
-    get_figure_and_open(
-        events=parsed_events,
-        delta=settings.delta,
-        time_resolution=settings.time_resolution,
-        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
-        auto_open=False,
-    )
+from tests.util.entities import Event, EventSpecialCode, get_note_instrument_token, Note
+from tests.util.visualize_sequence import get_figure_and_open
 
 
 def _check_anticipation_rule_for_controls_and_token_ranges(
@@ -263,7 +40,7 @@ def _check_anticipation_rule_for_controls_and_token_ranges(
 ) -> None:
     """This runs checks on forms and rules that should be true for all sequences."""
     assert isinstance(token_sequences, list)
-    assert len(token_sequences) > 1
+    assert len(token_sequences) >= 1
     # should be a list of lists of tokens
     assert isinstance(token_sequences[0], list)
 
@@ -338,6 +115,244 @@ def _check_anticipation_rule_for_controls_and_token_ranges(
                 )
 
 
+@pytest.fixture
+def lmd_0_example_1_tokens_and_parsed_events(
+    lmd_0_example_1_midi_path: Path,
+) -> tuple[list[list[Token]], list[Event], AnticipationV2Settings]:
+    settings = AnticipationV2Settings(
+        min_track_events=1,
+        vocab=Vocab(),
+        # AR only
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        tick_token_every_n_ticks=100,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+    )
+    midi_files = [lmd_0_example_1_midi_path]
+    in_memory_tokens = []
+    stats = v2_tokenize(midi_files, in_memory_tokens, settings)
+    assert not stats.ignored_files
+
+    _check_anticipation_rule_for_controls_and_token_ranges(in_memory_tokens, settings)
+
+    # tokenizing this in full is 9 sequences
+    assert len(in_memory_tokens) == 9
+    # all but the last one has full context, we've set a debug setting to push the
+    # tokens in the buffer that would typically be ignored in a production context
+    assert all((len(x) == settings.context_size for x in in_memory_tokens[:-1]))
+
+    # there are 585 remaining that do not fit exactly into a context window
+    assert len(in_memory_tokens[8]) == 585
+    assert in_memory_tokens[8][-1] == settings.vocab.SEPARATOR
+
+    all_tokens_flattened = [x for b in in_memory_tokens for x in b]
+    assert len(all_tokens_flattened) == 585 + (1024 * 8)
+
+    num_total_separators = 0
+    for i, packed_seq in enumerate(in_memory_tokens):
+        assert packed_seq[0] == settings.vocab.AUTOREGRESS
+        num_total_separators += len(
+            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
+        )
+
+    assert num_total_separators == 1
+    parsed_events = Event.from_token_seq(
+        [x for b in in_memory_tokens for x in b], settings
+    )
+    assert len(parsed_events) == 3045
+    return in_memory_tokens, parsed_events, settings
+
+
+def test_tokenize_v2_lakh_ar_only_for_visualization(
+    lmd_0_example_1_tokens_and_parsed_events: tuple[
+        list[list[Token]], list[Event], AnticipationV2Settings
+    ],
+) -> None:
+    _, parsed_events, settings = lmd_0_example_1_tokens_and_parsed_events
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_v2_lakh_ar_local_midi_vocab(
+    lmd_0_example_1_midi_path: Path, local_midi_settings_ar_only: AnticipationV2Settings
+) -> None:
+    in_memory_tokens = []
+    stats = v2_tokenize(
+        [lmd_0_example_1_midi_path], in_memory_tokens, local_midi_settings_ar_only
+    )
+    _check_anticipation_rule_for_controls_and_token_ranges(
+        in_memory_tokens, local_midi_settings_ar_only
+    )
+    assert not stats.ignored_files
+    parsed_events = Event.from_token_seq(
+        [x for b in in_memory_tokens for x in b], local_midi_settings_ar_only
+    )
+    get_figure_and_open(
+        events=parsed_events,
+        delta=local_midi_settings_ar_only.delta,
+        time_resolution=local_midi_settings_ar_only.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_v2_lakh_instrument_for_visualization(
+    lmd_0_example_1_midi_path: Path,
+) -> None:
+    instrument_anticipation_sample = []
+    with patch(
+        "anticipation.v2.tokenize.np.random.choice",
+        return_value=[MIDI_DRUMS_PROGRAM_CODE],
+    ):
+        # force the call to np.random.choice to always return [128] for tokenize.py
+        # This means that the instrument code 128 will always be a control. This code
+        # is the drum track for this sample. This makes it much easier to see the
+        # cold start issue
+        settings = AnticipationV2Settings(
+            vocab=Vocab(),
+            num_autoregressive_seq_per_midi_file=0,
+            num_instrument_anticipation_augmentations_per_midi_file=1,
+            num_span_anticipation_augmentations_per_midi_file=0,
+            tick_token_every_n_ticks=100,
+            debug=True,
+            debug_flush_remaining_token_buffer=False,
+        )
+        stats = v2_tokenize(
+            [lmd_0_example_1_midi_path], instrument_anticipation_sample, settings
+        )
+        assert not stats.ignored_files
+
+    _check_anticipation_rule_for_controls_and_token_ranges(
+        instrument_anticipation_sample, settings
+    )
+
+    assert len(instrument_anticipation_sample) == 8
+    num_total_separators = 0
+    for i, packed_seq in enumerate(instrument_anticipation_sample):
+        assert len(packed_seq) == settings.context_size
+        assert packed_seq[0] == settings.vocab.ANTICIPATE
+
+        num_total_separators += len(
+            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
+        )
+
+    # separator is a suffix now
+    assert num_total_separators == 0
+    parsed_events = Event.from_token_seq(
+        [x for b in instrument_anticipation_sample for x in b], settings
+    )
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_with_ticks_for_small_sequence_ar(
+    c_major_midi_path: Path,
+) -> None:
+    settings = AnticipationV2Settings(
+        min_track_events=1,
+        vocab=Vocab(),
+        # AR only
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        # force small context for this specific test, otherwise tokens are left in the
+        # buffer
+        context_size=104,
+        debug=True,
+        debug_flush_remaining_token_buffer=False,
+        tick_token_every_n_ticks=100,
+    )
+    tokenized_seq = []
+    stats = v2_tokenize([c_major_midi_path], tokenized_seq, settings)
+    assert not stats.ignored_files
+
+    _check_anticipation_rule_for_controls_and_token_ranges(tokenized_seq, settings)
+
+    assert len(tokenized_seq) == 1
+    num_total_separators = 0
+    for i, packed_seq in enumerate(tokenized_seq):
+        assert len(packed_seq) == settings.context_size
+        assert packed_seq[0] == settings.vocab.AUTOREGRESS
+        num_total_separators += len(
+            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
+        )
+
+    parsed_events = Event.from_token_seq(
+        [x for b in tokenized_seq for x in b], settings
+    )
+
+    # check that the ticks are added at specified interval
+    ticks = [x for x in parsed_events if x.is_tick()]
+    ticks_abs_times = [x.absolute_time for x in ticks]
+    assert ticks_abs_times == list(
+        range(0, 1500 + 1, settings.tick_token_every_n_ticks)
+    )
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_tokenize_with_ticks_for_lakh_ar(
+    lmd_0_example_1_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    settings = AnticipationV2Settings(
+        min_track_events=1,
+        vocab=local_midi_vocab,
+        # AR only
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        tick_token_every_n_ticks=100,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        debug=True,
+        debug_flush_remaining_token_buffer=False,
+    )
+    tokenized_seq = []
+    stats = v2_tokenize([lmd_0_example_1_midi_path], tokenized_seq, settings)
+    assert not stats.ignored_files
+    assert len(tokenized_seq) == 8
+    num_total_separators = 0
+    for i, packed_seq in enumerate(tokenized_seq):
+        assert len(packed_seq) == settings.context_size
+        assert packed_seq[0] == settings.vocab.AUTOREGRESS
+        num_total_separators += len(
+            [x for x in packed_seq if x == settings.vocab.SEPARATOR]
+        )
+
+    _check_anticipation_rule_for_controls_and_token_ranges(tokenized_seq, settings)
+
+    # the separator is a suffix instead of prefix now
+    assert num_total_separators == 0
+    parsed_events = Event.from_token_seq(
+        [x for b in tokenized_seq for x in b], settings
+    )
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
 def test_tokenize_v2_lakh_span_anticipation(
     lmd_0_example_1_midi_path: Path,
     local_midi_vocab: Vocab,
@@ -399,13 +414,15 @@ def test_tokenize_v2_dense_sparse_piano_span_anticipation(
         ],
     ):
         stats = v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_to, settings)
+        assert len(tokens_to) == 2
+        assert len(tokens_to[0]) == settings.context_size
+        assert len(tokens_to[1]) == settings.context_size
 
     assert not stats.ignored_files
     _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
 
     pe = Event.from_token_seq([x for b in tokens_to for x in b], settings)
-
-    # assert len(pe) == 730
+    assert len(pe) == 730
 
     assert pe[0].is_anticipate()
     assert pe[1].is_tick()
@@ -425,7 +442,12 @@ def test_tokenize_v2_dense_sparse_piano_span_anticipation(
     assert pe[253].midi_instrument() == 128
     assert pe[253].note().name == "C1"
 
-    # TODO: make this more detailed test
+    # not the most precise way to check / understand if something goes wrong
+    # but at least it is exact
+    expected_tokens = get_tokens_from_file(
+        TEST_DATA_PATH / (get_current_function_name() + ".txt")
+    )
+    assert tokens_to == expected_tokens
 
     get_figure_and_open(
         events=pe,
@@ -1068,6 +1090,7 @@ def test_sequence_boundaries_for_truncated_end_triple(c_major_midi_path: Path) -
     stats: TokenizationStatSummary = v2_tokenize(
         [c_major_midi_path], output=tokens_to, settings=settings
     )
+    _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
     assert stats.num_times_end_triple_was_truncated == 1
     assert len(tokens_to) == 16
     assert stats.num_sequences == 16
