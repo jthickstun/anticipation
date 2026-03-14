@@ -141,6 +141,7 @@ class TokenizationStatSummary:
     num_lost_tokens_left_in_buffer: int
     num_truncations_before_augmentation: int
     num_pitch_transpose_augmentations: int
+    num_times_span_had_insufficient_time: int
     total_time_in_midi_ticks_before_augmentation: int
     total_time_in_midi_ticks: int
     ignored_files: dict[MIDIFileIgnoredReason, list[Path]]
@@ -174,20 +175,26 @@ class TokenStream(Iterator[tuple[Token, ...]]):
     def __next__(self) -> tuple[Token, ...]:
         return next(self._stream)
 
-    def transform(self, tokens: list[tuple[Token, ...]]) -> list[tuple[Token, ...]]:
-        return tokens
+    def transform(
+        self, tokens: list[tuple[Token, ...]]
+    ) -> tuple[list[tuple[Token, ...]], dict]:
+        return tokens, {}
 
 
-def random_time_partition(
-    xs: list[tuple[int, int]], delta: float
-) -> tuple[float, tuple[int, int]]:
-    if not xs:
-        raise ValueError("xs is empty")
-
+def random_time_partition(xs: list[tuple[int, int]], delta: float) -> tuple[int, int]:
+    # xs is a list of tuples, representing
+    # [(an array index, a time in ticks), ...]
     t0, t1 = xs[0][1], xs[-1][1]
 
+    if t0 + delta == t1:
+        # only one reasonable choice here, which is
+        # to anticipate exactly after the final tick
+        return xs[-1]
+
     if not (t0 + delta < t1):
-        raise ValueError("xs must be non-decreasing and have more than one time")
+        raise ValueError(
+            f"Not enough time in the span. Got t0,t1 = ({t0}, {t1}), delta={delta}"
+        )
 
     # choose tau ~ Unif[t + delta, t'], tau >= t + delta
     tau: float = random.uniform(t0 + delta, t1)
@@ -196,10 +203,7 @@ def random_time_partition(
     # i is the first index with xs[i] > tau
     i = bisect_right(times_only, tau)  # type: ignore
 
-    # round to 4 decimals
-    tau = round(tau, 4)
-
-    return tau, xs[i]
+    return xs[i]
 
 
 class SpanV2TokenStream(TokenStream):
@@ -217,26 +221,39 @@ class SpanV2TokenStream(TokenStream):
     ) -> tuple[list[tuple[Token, ...]], list[Token]]:
         all_times = []
         for i, t in enumerate(tokens):
-            if len(t) != 3:
-                # skip ticks and other special
+            if t != (self._settings.vocab.TICK,):
+                # skip everything that isn't a tick
+                # reason being it is the most reliable notion
+                # of time, and all times it represents are unique -
+                # whereas several notes may play at the exact
+                # same time
                 continue
 
             # idx, time
-            all_times.append((i, t[0] - self._settings.vocab.TIME_OFFSET))
+            all_times.append(
+                (i, len(all_times) * self._settings.tick_token_every_n_ticks)
+            )
 
         # ignore the final time, it could be truncated
         all_times = all_times[:-1]
+        assert len(all_times) > 0
         delta = self._settings.delta * self._settings.time_resolution
 
         # randomly decide where the cut-off between events and controls happens
-        chosen_time, pivot_elem = random_time_partition(all_times, delta)
+        try:
+            pivot_elem = random_time_partition(all_times, delta)
+        except ValueError:
+            # not enough time in the token list to split
+            events = tokens
+            return events, []
+
         pivot_idx = pivot_elem[0]
 
         events = []
         controls = []
         control_offset = self._settings.vocab.CONTROL_OFFSET
         for i, x in enumerate(tokens):
-            if len(x) != 3:
+            if not v2_ops.is_triple(x, self._settings):
                 # is a tick or sep or other
                 events.append(x)
                 continue
@@ -257,7 +274,11 @@ class SpanV2TokenStream(TokenStream):
         flattened_controls = [x for b in controls for x in b]
         return events, flattened_controls
 
-    def transform(self, tokens: list[tuple[Token, ...]]) -> list[tuple[Token, ...]]:
+    def transform(
+        self, tokens: list[tuple[Token, ...]]
+    ) -> tuple[list[tuple[Token, ...]], dict]:
+        stats = {"insufficient_time": False}
+
         unwrapped_num_tokens_start = len([x for b in tokens for x in b])
 
         # NB: tokens can have ticks in it, this is necessary
@@ -273,6 +294,10 @@ class SpanV2TokenStream(TokenStream):
 
         # designate events and controls
         events, controls = self._decide_events_and_controls(all_tokens)
+
+        # the context did not contain enough time to split for a span
+        # that is ok, just keep track of it
+        stats["insufficient_time"] = len(controls) == 0
 
         # anticipate
         stream = v2_ops.block_anticipation(
@@ -299,19 +324,7 @@ class SpanV2TokenStream(TokenStream):
         assert unwrapped_num_tokens_start == unwrapped_num_tokens_end
 
         # return the tokens
-        return realized_tokens
-
-
-def is_control(token_logical_group, settings: AnticipationV2Settings) -> bool:
-    if not len(token_logical_group) == 3:
-        return False
-
-    t, d, ni = token_logical_group
-    return (
-        t >= settings.vocab.ATIME_OFFSET
-        and d >= settings.vocab.ADUR_OFFSET
-        and ni >= settings.vocab.ANOTE_OFFSET
-    )
+        return realized_tokens, stats
 
 
 class SequencePacker:
@@ -356,6 +369,7 @@ class SequencePacker:
         self._num_times_end_was_truncated = 0
         self._total_seq_written = 0
         self._total_time_in_midi_ticks_written = 0
+        self._num_times_span_had_insufficient_time = 0
         self._token_counter = {
             self._settings.vocab.TICK: 0,
             self._settings.vocab.SEPARATOR: 0,
@@ -389,7 +403,7 @@ class SequencePacker:
 
             # go through each logical grouping of tokens in the doc
             for tup in doc:
-                if is_control(tup, self._settings) and current_len == 0:
+                if v2_ops.is_control_triple(tup, self._settings) and current_len == 0:
                     # if this is the first non-flag token in the buffer, and
                     # it is a control, ensure it follows a tick
                     current_fragments[doc].append((self._settings.vocab.TICK,))
@@ -408,13 +422,18 @@ class SequencePacker:
                         # very unfortunate - the transform has internal state
                         # I am sorry :(
                         # if there is a better way, we should do that
-                        mutated_tokens = d.transform(tokens)
+                        mutated_tokens, _transform_stats = d.transform(tokens)
 
                         # should not add or remove token groups
                         assert len(mutated_tokens) == len(tokens)
 
                         # flatten and add to context
                         buf.extend([x for b in mutated_tokens for x in b])
+
+                        # take note of any issues or interesting behavior
+                        # that happened during the transform
+                        if _transform_stats.get("insufficient_time"):
+                            self._num_times_span_had_insufficient_time += 1
 
                     # every sequence must be prefixed with a control
                     # at the very first sequence in the dataset, we may get
@@ -440,7 +459,7 @@ class SequencePacker:
                         buf = [x for b in to_add for x in b]
 
                         # enforce rule that control always follows tick
-                        if is_control(to_add[-1], self._settings):
+                        if v2_ops.is_control_triple(to_add[-1], self._settings):
                             buf.insert(0, self._settings.vocab.TICK)
                     else:
                         # nothing was cut off, buffer can be blank
@@ -463,13 +482,18 @@ class SequencePacker:
             # document's was
             for d, tokens in current_fragments.items():
                 # apply transform
-                mutated_tokens = d.transform(tokens)
+                mutated_tokens, _transform_stats = d.transform(tokens)
 
                 # should not add or remove token groups
                 assert len(mutated_tokens) == len(tokens)
 
                 # flatten and add to context
                 buf.extend([x for b in mutated_tokens for x in b])
+
+                # take note of any issues or interesting behavior
+                # that happened during the transform
+                if _transform_stats.get("insufficient_time"):
+                    self._num_times_span_had_insufficient_time += 1
 
             to_return = [*control_prefix, *buf]
 
@@ -542,6 +566,7 @@ class SequencePacker:
             ],
             "num_lost_tokens_left_in_buffer": self._num_tokens_left_in_buffer,
             "total_time_in_midi_ticks": self._total_time_in_midi_ticks_written,
+            "num_times_span_had_insufficient_time": self._num_times_span_had_insufficient_time,
         }
 
 

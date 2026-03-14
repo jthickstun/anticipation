@@ -405,9 +405,9 @@ def test_tokenize_v2_dense_sparse_piano_span_anticipation(
         "anticipation.v2.tokenize.random_time_partition",
         side_effect=[
             # first call to random_time_partition's return value
-            (3054.3761, (312, 3062)),
+            (312, 3062),
             # second call's return value
-            (6285.9655, (292, 6300)),
+            (292, 6300),
         ],
     ):
         stats = v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_to, settings)
@@ -486,10 +486,10 @@ def test_tokenize_v2_simple_two_instrument_midi(
     with patch(
         "anticipation.v2.tokenize.random_time_partition",
         side_effect=[
-            (1344.4219, (33, 1400)),
-            (2933.7498, (31, 3000)),
-            (4220.5716, (23, 4300)),
-            (5758.9168, (19, 5800)),
+            (33, 1400),
+            (31, 3000),
+            (23, 4300),
+            (19, 5800),
         ],
     ):
         # lock in a specific random pattern for choosing span splits
@@ -1136,6 +1136,137 @@ def test_sequence_packing_file_correctness(
         # in memory buffer, this tests the correctness of file io
         in_memory_tokenized = np.array(in_memory_tokens, dtype=np.uint16)
         assert np.array_equal(in_memory_tokenized, tokenized_samples)
+
+
+def test_sequence_packing_file_boundaries_with_mixed_augmentations(
+    lmd_0_example_1_midi_path: Path,
+    lmd_0_example_2_midi_path: Path,
+    dense_drums_sparse_piano_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    set_seed(0)
+    settings = AnticipationV2Settings(
+        min_track_events=1,
+        vocab=local_midi_vocab,
+        # do one of every kind of augmentation
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=1,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        debug=True,
+        debug_flush_remaining_token_buffer=False,
+        tick_token_every_n_ticks=100,
+    )
+    midi_files = [
+        lmd_0_example_1_midi_path,
+        lmd_0_example_2_midi_path,
+        dense_drums_sparse_piano_midi_path,
+    ]
+    sequences = []
+    stats = v2_tokenize(midi_files, sequences, settings)
+    assert not stats.ignored_files
+    assert stats.num_given_files == 3
+    assert stats.num_tokenized_files == 3
+    assert stats.num_sequences == len(sequences) == 298
+    # parsed_events = Event.from_token_seq(
+    #     [x for b in in_memory_tokens for x in b], settings
+    # )
+    boundaries = []
+    for i in range(1, len(sequences)):
+        curr_seq = sequences[i]
+        if curr_seq.count(settings.vocab.SEPARATOR) > 0:
+            boundaries.append(i)
+
+    # boundary between `lmd_0_example_1_midi_path` AR and
+    # `lmd_0_example_1_midi_path` Instrument Anticipation
+    boundary_1: list[int] = sequences[boundaries[0]]
+    split_idx = boundary_1.index(settings.vocab.SEPARATOR)
+
+    # hmm...
+    # assert boundary_1[0] == settings.vocab.AUTOREGRESS
+    # assert boundary_1[split_idx + 1] == settings.vocab.ANTICIPATE
+
+    # print(boundaries)
+    # TODO: see what happens at the boundaries, assert its correctness
+
+
+def test_sequence_packing_file_boundaries_with_mixed_augmentations_2(
+    lmd_0_example_1_midi_path: Path,
+    lmd_0_example_2_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    set_seed(0)
+    settings = AnticipationV2Settings(
+        min_track_events=1,
+        vocab=local_midi_vocab,
+        # AR only
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        debug=True,
+        debug_flush_remaining_token_buffer=False,
+        tick_token_every_n_ticks=100,
+    )
+    midi_files = [lmd_0_example_1_midi_path, lmd_0_example_2_midi_path]
+
+    in_memory_tokens = []
+    stats = v2_tokenize([lmd_0_example_2_midi_path], in_memory_tokens, settings)
+    assert not stats.ignored_files
+    # assert stats.num_given_files == 2
+    # assert stats.num_tokenized_files == 2
+    parsed_events = Event.from_token_seq(
+        [x for b in in_memory_tokens for x in b], settings
+    )
+
+    # assert len(in_memory_tokens) == 1
+    get_figure_and_open(
+        events=parsed_events,
+        delta=settings.delta,
+        time_resolution=settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + ".html")),
+        auto_open=False,
+    )
+
+
+def test_extremely_long_span_augmentation(
+    lmd_0_example_2_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    set_seed(0)
+    settings = AnticipationV2Settings(
+        min_track_events=1,
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        debug=True,
+        debug_flush_remaining_token_buffer=False,
+        tick_token_every_n_ticks=100,
+    )
+    sequences = []
+
+    # this particular file is very long and also has some very note-dense parts
+    # this test helped uncover a problem in sampling by the raw index of the context,
+    # instead we sample in time, which prevents that issue
+    stats = v2_tokenize([lmd_0_example_2_midi_path], sequences, settings)
+    assert not stats.ignored_files
+    _check_anticipation_rule_for_controls_and_token_ranges(sequences, settings)
+    assert len(sequences) == 88
+
+    num_good_spans = 0
+    for seq in sequences:
+        parsed_events = Event.from_token_seq(seq, settings)
+
+        # unfortunately it may not always be possible to do a time-based split
+        # this is because the note density might be so high that everything
+        # in the context is within delta seconds
+        num_controls = len([x for x in parsed_events if x.is_control])
+        if num_controls > 0:
+            num_good_spans += 1
+
+    assert num_good_spans + stats.num_times_span_had_insufficient_time == len(sequences)
 
 
 def test_no_segfault(lmd_1_example_0_midi_path: Path) -> None:

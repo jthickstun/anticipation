@@ -69,6 +69,8 @@ def translate(
     settings: AnticipationV2Settings,
     seconds: bool = False,
 ) -> list[Token]:
+    assert len(tokens) % 3 == 0, "bad length"
+
     if seconds:
         dt = int(settings.time_resolution * dt)
 
@@ -195,12 +197,9 @@ def is_control_triple(
     logical_group: tuple[Token, ...], settings: AnticipationV2Settings
 ) -> bool:
     return is_triple(logical_group, settings) and (
-        # avoid using time for this check (index 0)
-        # because it might not be relativized yet
-        # in lakh there are some samples that are SO LONG that their
-        # un-relativized times are pushed into ranges of things we don't expect
-        logical_group[1] >= settings.vocab.CONTROL_OFFSET
-        and logical_group[2] >= settings.vocab.CONTROL_OFFSET
+        logical_group[0] >= settings.vocab.ATIME_OFFSET
+        and logical_group[1] >= settings.vocab.ADUR_OFFSET
+        and logical_group[2] >= settings.vocab.ANOTE_OFFSET
     )
 
 
@@ -241,6 +240,9 @@ def streaming_relativize_to_tick(
             )
 
             if is_control:
+                if not (to_add[0] >= settings.vocab.CONTROL_OFFSET):
+                    xxx = 10
+
                 # don't let the time be over-subtracted
                 assert to_add[0] >= settings.vocab.CONTROL_OFFSET, (
                     f"!({to_add[0]} >= {settings.vocab.CONTROL_OFFSET})"

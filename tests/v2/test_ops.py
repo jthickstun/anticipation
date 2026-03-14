@@ -70,3 +70,18 @@ def test_get_truncated_token_groups_many_ticks(local_midi_vocab: Vocab) -> None:
         truncated_end, token_groups
     )
     assert to_add_next_seq == token_groups[1:]
+
+
+def test_get_truncated_token_group_real_example() -> None:
+    truncated_end = [9003, 17612]
+    token_groups = [
+        (87, 119, 10515),
+        (17612,),
+        (13, 125, 10516),
+        (37, 198, 9003),
+        (17612,),
+    ]
+    to_add_next_seq = get_truncated_token_groups_from_truncated_flat_token_sequence(
+        truncated_end, token_groups
+    )
+    assert to_add_next_seq == token_groups[-2:]
