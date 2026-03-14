@@ -28,6 +28,7 @@ from conftest import TEST_DATA_PATH
 from tests.conftest import (
     get_current_function_name,
     get_tokens_from_file,
+    save_tokens_as_file,
     VISUALIZATIONS_PATH,
 )
 from tests.util.entities import Event, EventSpecialCode, get_note_instrument_token, Note
@@ -142,8 +143,6 @@ def lmd_0_example_1_tokens_and_parsed_events(
     # all but the last one has full context, we've set a debug setting to push the
     # tokens in the buffer that would typically be ignored in a production context
     assert all((len(x) == settings.context_size for x in in_memory_tokens[:-1]))
-
-    # there are 585 remaining that do not fit exactly into a context window
     assert len(in_memory_tokens[8]) == 584
 
     all_tokens_flattened = [x for b in in_memory_tokens for x in b]
@@ -151,7 +150,10 @@ def lmd_0_example_1_tokens_and_parsed_events(
 
     num_total_separators = 0
     for i, packed_seq in enumerate(in_memory_tokens):
-        assert packed_seq[0] == settings.vocab.AUTOREGRESS
+        assert (packed_seq[0] == settings.vocab.AUTOREGRESS) or (
+            packed_seq[0] == settings.vocab.SEPARATOR
+            and packed_seq[1] == settings.vocab.AUTOREGRESS
+        )
         num_total_separators += len(
             [x for x in packed_seq if x == settings.vocab.SEPARATOR]
         )
@@ -160,7 +162,7 @@ def lmd_0_example_1_tokens_and_parsed_events(
     parsed_events = Event.from_token_seq(
         [x for b in in_memory_tokens for x in b], settings
     )
-    assert len(parsed_events) == 3046
+    assert len(parsed_events) == 3045
     return in_memory_tokens, parsed_events, settings
 
 
@@ -236,8 +238,10 @@ def test_tokenize_v2_lakh_instrument_for_visualization(
     num_total_separators = 0
     for i, packed_seq in enumerate(instrument_anticipation_sample):
         assert len(packed_seq) == settings.context_size
-        assert packed_seq[0] == settings.vocab.ANTICIPATE
-
+        assert (packed_seq[0] == settings.vocab.ANTICIPATE) or (
+            packed_seq[0] == settings.vocab.SEPARATOR
+            and packed_seq[1] == settings.vocab.ANTICIPATE
+        )
         num_total_separators += len(
             [x for x in packed_seq if x == settings.vocab.SEPARATOR]
         )
@@ -283,7 +287,10 @@ def test_tokenize_with_ticks_for_small_sequence_ar(
     num_total_separators = 0
     for i, packed_seq in enumerate(tokenized_seq):
         assert len(packed_seq) == settings.context_size
-        assert packed_seq[0] == settings.vocab.AUTOREGRESS
+        assert (packed_seq[0] == settings.vocab.AUTOREGRESS) or (
+            packed_seq[0] == settings.vocab.SEPARATOR
+            and packed_seq[1] == settings.vocab.AUTOREGRESS
+        )
         num_total_separators += len(
             [x for x in packed_seq if x == settings.vocab.SEPARATOR]
         )
@@ -330,7 +337,10 @@ def test_tokenize_with_ticks_for_lakh_ar(
     num_total_separators = 0
     for i, packed_seq in enumerate(tokenized_seq):
         assert len(packed_seq) == settings.context_size
-        assert packed_seq[0] == settings.vocab.AUTOREGRESS
+        assert (packed_seq[0] == settings.vocab.AUTOREGRESS) or (
+            packed_seq[0] == settings.vocab.SEPARATOR
+            and packed_seq[1] == settings.vocab.AUTOREGRESS
+        )
         num_total_separators += len(
             [x for x in packed_seq if x == settings.vocab.SEPARATOR]
         )
@@ -421,35 +431,42 @@ def test_tokenize_v2_dense_sparse_piano_span_anticipation(
     pe = Event.from_token_seq([x for b in tokens_to for x in b], settings)
     assert len(pe) == 732
 
-    assert pe[0].is_anticipate()
-    assert pe[1].is_separator()
-    assert pe[2].is_anticipate()
-    assert pe[3].is_tick()
+    assert pe[0].is_separator()
+    assert pe[1].is_anticipate()
+    assert pe[2].is_tick()
 
-    assert pe[4].midi_instrument() == 0
-    assert pe[4].midi_time() == 0
-    assert pe[4].midi_duration() == 100
-    assert pe[4].note().name == "C3"
+    assert pe[3].midi_instrument() == 0
+    assert pe[3].midi_time() == 0
+    assert pe[3].midi_duration() == 100
+    assert pe[3].note().name == "C3"
 
     # all events here...
-    for i in range(5, 255):
+    for i in range(4, 254):
         assert not pe[i].is_control
 
     # first control we encounter
+    assert pe[254].is_control
+    assert pe[254].midi_time() == 50
+    assert pe[254].midi_duration() == 1
+    assert pe[254].midi_instrument() == 128
+    assert pe[254].note().name == "E1"
+
     assert pe[255].is_control
     assert pe[255].midi_duration() == 6
     assert pe[255].midi_instrument() == 128
     assert pe[255].note().name == "F#1"
 
     assert pe[256].is_control
+    assert pe[256].midi_time() == 62
     assert pe[256].midi_duration() == 38
     assert pe[256].midi_instrument() == 128
     assert pe[256].note().name == "C1"
 
     # not the most precise way to check / understand if something goes wrong
     # but at least it is exact
+    data_path = TEST_DATA_PATH / (get_current_function_name() + ".txt")
     expected_tokens = get_tokens_from_file(
-        TEST_DATA_PATH / (get_current_function_name() + ".txt")
+        data_path,
     )
     assert tokens_to == expected_tokens
 
@@ -501,14 +518,13 @@ def test_tokenize_v2_simple_two_instrument_midi(
     parsed_events = Event.from_token_seq(
         [x for b in [tokens_to[0]] for x in b], settings
     )
-    assert len(parsed_events) == 40
+    assert len(parsed_events) == 38
 
-    assert parsed_events[0].as_tokens() == (settings.vocab.ANTICIPATE,)
-    assert parsed_events[1].as_tokens() == (settings.vocab.SEPARATOR,)
-    assert parsed_events[2].as_tokens() == (settings.vocab.ANTICIPATE,)
-    assert parsed_events[3].as_tokens() == (settings.vocab.TICK,)
+    assert parsed_events[0].as_tokens() == (settings.vocab.SEPARATOR,)
+    assert parsed_events[1].as_tokens() == (settings.vocab.ANTICIPATE,)
+    assert parsed_events[2].as_tokens() == (settings.vocab.TICK,)
 
-    e_2 = parsed_events[4]
+    e_2 = parsed_events[3]
     assert e_2.absolute_time == 0
     assert e_2.midi_time() == 0
     assert e_2.midi_duration() == 100
@@ -521,7 +537,7 @@ def test_tokenize_v2_simple_two_instrument_midi(
         settings.vocab.NOTE_OFFSET + 72,
     )
 
-    e_3 = parsed_events[5]
+    e_3 = parsed_events[4]
     assert e_3.absolute_time == 0
     assert e_3.midi_time() == 0
     assert e_3.midi_duration() == 400
@@ -534,10 +550,10 @@ def test_tokenize_v2_simple_two_instrument_midi(
         settings.vocab.NOTE_OFFSET + 9_268,
     )
 
-    e_4 = parsed_events[6]
+    e_4 = parsed_events[5]
     assert e_4.as_tokens() == (settings.vocab.TICK,)
 
-    e_5 = parsed_events[7]
+    e_5 = parsed_events[6]
     assert e_5.absolute_time == 100
     assert e_5.midi_time() == 0  # relativized to the tick
     assert e_5.midi_duration() == 100
@@ -549,10 +565,10 @@ def test_tokenize_v2_simple_two_instrument_midi(
         settings.vocab.NOTE_OFFSET + 71,
     )
 
-    e_6 = parsed_events[8]
+    e_6 = parsed_events[7]
     assert e_6.as_tokens() == (settings.vocab.TICK,)
 
-    e_7 = parsed_events[9]
+    e_7 = parsed_events[8]
     assert e_7.absolute_time == 200
     assert e_7.midi_time() == 0  # relativized to the tick
     assert e_7.midi_duration() == 100
@@ -564,10 +580,10 @@ def test_tokenize_v2_simple_two_instrument_midi(
         settings.vocab.NOTE_OFFSET + 70,
     )
 
-    e_8 = parsed_events[10]
+    e_8 = parsed_events[9]
     assert e_8.as_tokens() == (settings.vocab.TICK,)
 
-    e_9 = parsed_events[11]
+    e_9 = parsed_events[10]
     assert e_9.absolute_time == 300
     assert e_9.midi_time() == 0  # relativized to the tick
     assert e_9.midi_duration() == 100
@@ -579,10 +595,10 @@ def test_tokenize_v2_simple_two_instrument_midi(
         settings.vocab.NOTE_OFFSET + 69,
     )
 
-    e_10 = parsed_events[12]
+    e_10 = parsed_events[11]
     assert e_10.as_tokens() == (settings.vocab.TICK,)
 
-    e_11 = parsed_events[13]
+    e_11 = parsed_events[12]
     assert e_11.absolute_time == 400
     assert e_11.midi_time() == 0
     assert e_11.midi_duration() == 100
@@ -593,7 +609,7 @@ def test_tokenize_v2_simple_two_instrument_midi(
         settings.vocab.DUR_OFFSET + 100,
         settings.vocab.NOTE_OFFSET + 68,
     )
-    e_12 = parsed_events[14]
+    e_12 = parsed_events[13]
     assert e_12.absolute_time == 400
     assert e_12.midi_time() == 0
     assert e_12.midi_duration() == 400
@@ -604,10 +620,10 @@ def test_tokenize_v2_simple_two_instrument_midi(
         settings.vocab.DUR_OFFSET + 400,
         settings.vocab.NOTE_OFFSET + 9_269,
     )
-    e_13 = parsed_events[15]
+    e_13 = parsed_events[14]
     assert e_13.as_tokens() == (settings.vocab.TICK,)
 
-    e_14 = parsed_events[16]
+    e_14 = parsed_events[15]
     assert e_14.absolute_time == 500
     assert e_14.midi_time() == 0
     assert e_14.midi_duration() == 100
@@ -624,11 +640,17 @@ def test_tokenize_v2_simple_two_instrument_midi(
     # we are most interested in what happens at the very
     # end when a span happens
     final_span_token_tuples = []
-    for e in parsed_events[21:]:
+    for e in parsed_events[20:]:
         final_span_token_tuples.append(e.as_tokens())
 
     assert final_span_token_tuples == [
         (settings.vocab.TICK,),
+        # -- CONTROL ---
+        (
+            settings.vocab.ATIME_OFFSET + 0,
+            settings.vocab.ADUR_OFFSET + 100,
+            settings.vocab.ANOTE_OFFSET + 71,
+        ),
         (
             settings.vocab.TIME_OFFSET + 0,
             settings.vocab.DUR_OFFSET + 100,
@@ -642,7 +664,6 @@ def test_tokenize_v2_simple_two_instrument_midi(
         (settings.vocab.TICK,),
         # -- CONTROL ---
         (
-            # hmm... this should be 0 though
             settings.vocab.ATIME_OFFSET + 0,
             settings.vocab.ADUR_OFFSET + 100,
             settings.vocab.ANOTE_OFFSET + 70,
@@ -668,6 +689,11 @@ def test_tokenize_v2_simple_two_instrument_midi(
         ),
         (settings.vocab.TICK,),
         (
+            settings.vocab.ATIME_OFFSET + 0,
+            settings.vocab.ADUR_OFFSET + 100,
+            settings.vocab.ANOTE_OFFSET + 68,
+        ),
+        (
             settings.vocab.TIME_OFFSET + 0,
             settings.vocab.DUR_OFFSET + 100,
             settings.vocab.NOTE_OFFSET + 61,
@@ -683,13 +709,6 @@ def test_tokenize_v2_simple_two_instrument_midi(
             settings.vocab.DUR_OFFSET + 400,
             settings.vocab.NOTE_OFFSET + 9_271,
         ),
-        (settings.vocab.TICK,),
-        (
-            settings.vocab.TIME_OFFSET + 0,
-            settings.vocab.DUR_OFFSET + 100,
-            settings.vocab.NOTE_OFFSET + 71,
-        ),
-        (settings.vocab.TICK,),
         (settings.vocab.TICK,),
         (settings.vocab.TICK,),
     ]
@@ -734,8 +753,9 @@ def test_tokenize_v2_dense_sparse_piano_ar_only(
 
     flattened_tokens = [x for b in tokens_to for x in b]
 
+    # 1 control token for every context length
     num_ar_tokens = flattened_tokens.count(settings.vocab.AUTOREGRESS)
-    assert num_ar_tokens == 4
+    assert num_ar_tokens == 3
     num_tick_tokens = flattened_tokens.count(settings.vocab.TICK)
     assert num_tick_tokens == 85
     num_sep_tokens = flattened_tokens.count(settings.vocab.SEPARATOR)
@@ -745,8 +765,8 @@ def test_tokenize_v2_dense_sparse_piano_ar_only(
     parsed_events = Event.from_token_seq([x for b in tokens_to for x in b], settings)
 
     # each AR token is the same
-    assert len(parsed_events) - 3 == len(set(parsed_events))
-    assert len(parsed_events) == 884
+    assert len(parsed_events) - (num_ar_tokens - 1) == len(set(parsed_events))
+    assert len(parsed_events) == 883
 
     get_figure_and_open(
         events=parsed_events,
@@ -905,7 +925,7 @@ def test_tokenize_v2_dense_drums_sparse_piano_instrument_anticipation_blockwise(
         # this test bypasses the sequence packer, so it won't have
         # separator tokens or other control tokens, also there's no truncation
         # logic to fit it into the context window... so we can assume every event
-        # is complete
+        # is complete, and the sequence won't have SEP or AR/ANTI tokens.
         token_stream: TokenStream
         token_stream = _get_augmentation_instrument(
             result.events,
@@ -917,15 +937,12 @@ def test_tokenize_v2_dense_drums_sparse_piano_instrument_anticipation_blockwise(
         assert token_stream.control_prefix == (settings.vocab.ANTICIPATE,)
 
     token_list = list(token_stream)
-    assert len(token_list) == 883
+    assert len(token_list) == 882
 
     # token list should be a list of tuples of int, e.g.
     # [(TICK,), (0, 50, 12), (50, 50, 12), ...]
     assert isinstance(token_list[0], tuple)
     assert isinstance(token_list[0][0], int)
-
-    # must start with separator
-    assert token_list[0][0] == settings.vocab.SEPARATOR
 
     tick_idxs: list[int] = []
     for i, event in enumerate(token_list):
@@ -942,7 +959,7 @@ def test_tokenize_v2_dense_drums_sparse_piano_instrument_anticipation_blockwise(
     assert len(tick_idxs) == 88
 
     # sequence should start with a tick, but after the sep
-    assert tick_idxs[0] == 1
+    assert tick_idxs[0] == 0
     for i, tick_idx in enumerate(tick_idxs[:-1]):
         curr_tick_idx = tick_idx
         next_tick_idx = tick_idxs[i + 1]
@@ -966,7 +983,7 @@ def test_tokenize_v2_dense_drums_sparse_piano_instrument_anticipation_blockwise(
             assert triple_after_tick[2] >= settings.vocab.CONTROL_OFFSET
 
     ungrouped_tokens = [x for b in token_list for x in b]
-    assert len(ungrouped_tokens) == 2472
+    assert len(ungrouped_tokens) == 2470
 
     # parse and plot
     parsed_events = Event.from_token_seq(ungrouped_tokens, settings)
@@ -1003,7 +1020,7 @@ def test_absolute_time_is_correct_with_ticks(lmd_0_example_1_midi_path: Path) ->
     assert len(events_without_ticks) == 8
     assert not stats.ignored_files
     assert stats.num_tokenized_files == 1
-    assert stats.num_lost_tokens_left_in_buffer == 405
+    assert stats.num_lost_tokens_left_in_buffer == 406
 
     events_without_ticks = Event.from_token_seq(
         [x for b in events_without_ticks for x in b], settings_no_ticks
@@ -1081,10 +1098,14 @@ def test_sequence_packing_file_correctness(
     assert stats.num_sequences == 97
     assert stats.num_given_files == 2
     assert stats.num_tokenized_files == 2
-    assert stats.num_lost_tokens_left_in_buffer == 181
+    assert stats.num_lost_tokens_left_in_buffer == 182
     assert stats.num_pitch_transpose_augmentations == 0
     assert stats.num_anticipate_tokens == 0
-    assert stats.num_autoregress_tokens == 99
+
+    # there is one sequence in here where the first song ends and the
+    # other begins, when we start the next one, it must be the case
+    # that the relevant control exists at that boundary
+    assert stats.num_autoregress_tokens == 98
     assert stats.num_times_end_was_truncated == 57
 
     # should be one per tokenized file - and it appears in prefix
@@ -1182,9 +1203,8 @@ def test_sequence_packing_file_boundaries_with_mixed_augmentations(
     boundary_1: list[int] = sequences[boundaries[0]]
     split_idx = boundary_1.index(settings.vocab.SEPARATOR)
 
-    # hmm...
-    # assert boundary_1[0] == settings.vocab.AUTOREGRESS
-    # assert boundary_1[split_idx + 1] == settings.vocab.ANTICIPATE
+    assert boundary_1[0] == settings.vocab.AUTOREGRESS
+    assert boundary_1[split_idx + 1] == settings.vocab.ANTICIPATE
 
     # print(boundaries)
     # TODO: see what happens at the boundaries, assert its correctness
@@ -1461,14 +1481,13 @@ def test_sequence_boundaries_for_truncated_end_triple(c_major_midi_path: Path) -
     ]
     assert seq_0 == [
         # sequence prefix
-        settings.vocab.AUTOREGRESS,
         settings.vocab.SEPARATOR,
         # ---
         settings.vocab.AUTOREGRESS,
         settings.vocab.TICK,
         *event_0,
         # event 1 is truncated...
-        *event_1[:1],
+        *event_1[:2],
     ]
     seq_1 = tokens_to[1]
     assert seq_1 == [
@@ -1611,12 +1630,12 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
     settings = AnticipationV2Settings(
         vocab=Vocab(),
         debug=False,
-        debug_flush_remaining_token_buffer=True,
+        debug_flush_remaining_token_buffer=False,
         min_track_events=1,
         min_track_time_in_seconds=1,
         # I set this so that each sequence exactly fits in the context
         # there should be no truncations
-        context_size=106,
+        context_size=105,
         num_autoregressive_seq_per_midi_file=1,
         num_instrument_anticipation_augmentations_per_midi_file=0,
         num_span_anticipation_augmentations_per_midi_file=0,
@@ -1631,6 +1650,7 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
     stats: TokenizationStatSummary = v2_tokenize(
         [c_major_midi_path], output=tokens_to, settings=settings
     )
+
     assert stats.num_pitch_transpose_augmentations == 6
     assert stats.num_times_end_was_truncated == 0
     assert len(tokens_to) == 7  # transpositions (-3, -2, -1, 0, 1, 2, 3)
@@ -1858,7 +1878,9 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
     for i, seq in enumerate(tokens_to):
         assert len(seq) == settings.context_size
         # ensure every context starts with the flag token
-        assert seq[0] == settings.vocab.AUTOREGRESS
+        assert (seq[0] == settings.vocab.AUTOREGRESS) or (
+            seq[0] == settings.vocab.SEPARATOR and seq[1] == settings.vocab.AUTOREGRESS
+        )
 
         # parse events
         parsed_events = Event.from_token_seq(seq, settings)
@@ -1866,7 +1888,6 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
         assert notes == expected_note_names[i]
 
     _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
-
     all_tokens = [x for b in tokens_to for x in b]
 
     # should be 1 separator for every transposition

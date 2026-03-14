@@ -392,17 +392,30 @@ class SequencePacker:
         # starting state
         current_fragments = defaultdict(list)
         current_len = 0
-        control_prefix = ()
         mutated_tokens = []
         buf: list[Token] = []
 
         # go through each document
         doc: TokenStream
         for doc in self._iterator_queue:
-            control_prefix = doc.control_prefix
+            # new document, must be separated
+            current_fragments[doc].append((self._settings.vocab.SEPARATOR,))
+            current_len += 1
+
+            # ensure the control prefix is there
+            current_fragments[doc].append(doc.control_prefix)
+            current_len += len(doc.control_prefix)
 
             # go through each logical grouping of tokens in the doc
             for tup in doc:
+                # prepend the control sequence, this scenario captures when we are
+                # still iterating through the same document, but a new context has
+                # been created, so we must prefix it with the control - that's why
+                # we put it in buf instead of current_fragments
+                if current_len == 0:
+                    buf = [*doc.control_prefix]
+                    current_len += len(doc.control_prefix)
+
                 if v2_ops.is_control_triple(tup, self._settings) and current_len == 0:
                     # if this is the first non-flag token in the buffer, and
                     # it is a control, ensure it follows a tick
@@ -414,7 +427,7 @@ class SequencePacker:
                 current_fragments[doc].append(tup)
                 current_len += len(tup)
 
-                if current_len >= self._settings.context_size - len(control_prefix):
+                if current_len >= self._settings.context_size:
                     # several documents might be in the same context, apply
                     # their respective transformations to their subsequences
                     for d, tokens in current_fragments.items():
@@ -436,10 +449,7 @@ class SequencePacker:
                             self._num_times_span_had_insufficient_time += 1
 
                     # every sequence must be prefixed with a control
-                    # at the very first sequence in the dataset, we may get
-                    # CONTROL + SEP + CONTROL ...
-                    # so a bit wasteful, but in general we do not assume
-                    my_seq = [*control_prefix, *buf]
+                    my_seq = [*buf]
                     did_truncate = len(my_seq) > self._settings.context_size
                     truncated_part = my_seq[self._settings.context_size :]
                     my_seq = my_seq[: self._settings.context_size]
@@ -461,11 +471,14 @@ class SequencePacker:
                         # enforce rule that control always follows tick
                         if v2_ops.is_control_triple(to_add[-1], self._settings):
                             buf.insert(0, self._settings.vocab.TICK)
+
+                        buf = [*doc.control_prefix] + buf
+                        current_len += len(doc.control_prefix)
                     else:
-                        # nothing was cut off, buffer can be blank
+                        # nothing was cut off
                         buf = []
 
-                    # Reset state
+                    # reset the state
                     current_fragments = defaultdict(list)
                     current_len = len(buf)
 
@@ -495,7 +508,7 @@ class SequencePacker:
                 if _transform_stats.get("insufficient_time"):
                     self._num_times_span_had_insufficient_time += 1
 
-            to_return = [*control_prefix, *buf]
+            to_return = [*buf]
 
             # something is wrong if this is larger than the context
             assert len(to_return) <= self._settings.context_size
@@ -541,7 +554,7 @@ class SequencePacker:
         if not self._settings.debug_flush_remaining_token_buffer:
             assert len(local_copy) == self._settings.context_size
 
-        # every sequence must start with some control prefix
+        # every sequence must start with some control prefix (or sep)
         assert local_copy[0] >= self._settings.vocab.SPECIAL_OFFSET
 
         # write it
@@ -720,11 +733,6 @@ def _get_augmentation_autoregressive(
 
     # add prefix
     control_flag = (settings.vocab.AUTOREGRESS,)
-    stream = v2_ops.streaming_prefix(
-        stream,
-        # these are together so if they get truncated, we repeat it
-        [(settings.vocab.SEPARATOR, *control_flag)],
-    )
 
     return TokenStream(stream, settings, control_flag)
 
@@ -775,13 +783,6 @@ def _get_augmentation_instrument(
 
     # add prefix
     control_flag = (settings.vocab.ANTICIPATE,)
-    stream = v2_ops.streaming_prefix(
-        # these are together so if they get truncated, we repeat it
-        stream,
-        [
-            (settings.vocab.SEPARATOR, *control_flag),
-        ],
-    )
 
     return TokenStream(stream, settings, control_flag)
 
@@ -798,13 +799,8 @@ def _get_span_augmentation(
 
     # add prefix
     control_flag = (settings.vocab.ANTICIPATE,)
-    stream = v2_ops.streaming_prefix(
-        events_and_ticks,
-        # these are together so if they get truncated, we repeat it
-        [(settings.vocab.SEPARATOR, *control_flag)],
-    )
 
     # this one has very weird control flow, sorry
     # an operation is performed on the sequence at the moment is it packed /
     # 'flushed' into a sequence length equal to the context
-    return SpanV2TokenStream(stream, settings, control_flag)
+    return SpanV2TokenStream(events_and_ticks, settings, control_flag)
