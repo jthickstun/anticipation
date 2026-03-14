@@ -197,6 +197,15 @@ class Event:
         )
 
     @classmethod
+    def from_list_of_token_seq(
+        cls, seqs: list[list[Token]], settings: AnticipationV2Settings
+    ) -> list["Event"]:
+        return cls.from_token_seq(
+            [token for seq in seqs for token in seq],
+            settings,
+        )
+
+    @classmethod
     def from_token_seq(
         cls, raw_event_token_seq: list[Token], settings: AnticipationV2Settings
     ) -> list["Event"]:
@@ -229,6 +238,7 @@ class Event:
                         original_idx_in_token_seq=i,
                         special_code=special_code,
                         settings=settings,
+                        absolute_time=prev_tick_abs_time,
                     )
                 )
                 i += 1
@@ -243,7 +253,7 @@ class Event:
                         is_control=False,
                         special_code=EventSpecialCode.SEQ_SEPARATION_TOKENS,
                         original_idx_in_token_seq=i,
-                        absolute_time=settings.vocab.TIME_OFFSET + 1,
+                        absolute_time=prev_tick_abs_time,
                         settings=settings,
                     )
                 )

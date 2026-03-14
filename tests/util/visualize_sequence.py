@@ -86,6 +86,7 @@ def _add_boundaries_to_subplot(
     df_boundaries: pd.DataFrame,
     delta: float,
     time_resolution: int,
+    context_length: int,
 ) -> None:
     """
     Adds boundary lines + annotations to the *top* subplot only.
@@ -94,8 +95,92 @@ def _add_boundaries_to_subplot(
     dfb = df_boundaries.sort_values(by="start", kind="mergesort")
     prev_end = 0
     for row in dfb.to_dict("records"):
-        # special_code = row["special_code"]
-        if row["original_idx_in_token_seq"] % 1024 == 0:
+        special_code = row["special_code"]
+        if special_code == EventSpecialCode.SEQ_SEPARATION_TOKENS:
+            fig.add_shape(
+                type="line",
+                x0=row["start"],
+                x1=row["start"],
+                y0=0,
+                y1=1,
+                xref="x",
+                yref="y domain",
+                layer="above",
+                row=1,
+                col=1,
+                line={"width": 1.2},
+            )
+            # top of the graph
+            sep_idx = row["original_idx_in_token_seq"]
+            fig.add_annotation(
+                x=row["start"],
+                y=1,
+                xref="x",
+                yref="y domain",
+                text=f"SEP (idx={sep_idx:,})",
+                showarrow=False,
+                yanchor="bottom",
+                yshift=-14,
+                row=1,
+                col=1,
+            )
+        elif special_code == EventSpecialCode.AUTOREGRESSIVE_TOKEN:
+            fig.add_shape(
+                type="line",
+                x0=row["start"],
+                x1=row["start"],
+                y0=0,
+                y1=1,
+                xref="x",
+                yref="y domain",
+                layer="above",
+                row=1,
+                col=1,
+                line={"dash": "dash", "width": 0.7},
+            )
+            # top of the graph
+            fig.add_annotation(
+                x=row["start"],
+                y=1,
+                xref="x",
+                yref="y domain",
+                text="AR",
+                showarrow=False,
+                yanchor="bottom",
+                yshift=0,
+                row=1,
+                col=1,
+            )
+        elif special_code == EventSpecialCode.AUTOREGRESSIVE_TOKEN:
+            fig.add_shape(
+                type="line",
+                x0=row["start"],
+                x1=row["start"],
+                y0=0,
+                y1=1,
+                xref="x",
+                yref="y domain",
+                layer="above",
+                row=1,
+                col=1,
+                line={"dash": "dash", "width": 0.7},
+            )
+            # top of the graph
+            fig.add_annotation(
+                x=row["start"],
+                y=1,
+                xref="x",
+                yref="y domain",
+                text="ANTI",
+                showarrow=False,
+                yanchor="bottom",
+                yshift=0,
+                row=1,
+                col=1,
+            )
+
+        if row["original_idx_in_token_seq"] % context_length == 0:
+            # context windows on bottom graph, HORIZONTAL lines
             fig.add_shape(
                 type="line",
                 x0=prev_end,
@@ -135,6 +220,7 @@ def _add_boundaries_to_subplot(
                 row=2,
                 col=1,
             )
+
         prev_end = max(prev_end, row["end"])
 
     first_delta_sec_in_ticks = int(delta * time_resolution)
@@ -385,11 +471,13 @@ def plot_pianoroll_with_index_timeline(
     )
 
     # adds all the context lines and delta seconds
+    settings = events[0].settings
     _add_boundaries_to_subplot(
         fig,
         df_boundaries,
         delta,
         time_resolution,
+        settings.context_size,
     )
 
     # --- Row 2: Index timeline (time vs idx) ---

@@ -50,6 +50,14 @@ def _check_anticipation_rule_for_controls_and_token_ranges(
         exact_size_tokens_seq = exact_size_tokens_seq[:-1]
     assert all(len(x) == settings.context_size for x in exact_size_tokens_seq)
 
+    for seq in token_sequences:
+        num_ar = seq.count(settings.vocab.AUTOREGRESS)
+        num_an = seq.count(settings.vocab.ANTICIPATE)
+        num_sep = seq.count(settings.vocab.SEPARATOR)
+        if num_ar + num_an > 1:
+            # a boundary sequence, ensure there's a separator
+            assert num_sep == 1
+
     flattened_tokens = [x for b in token_sequences for x in b]
     max_token_val = settings.vocab.total_tokens() - 1
     assert all(0 <= x <= max_token_val for x in flattened_tokens)
@@ -195,6 +203,7 @@ def test_tokenize_v2_lakh_ar_local_midi_vocab(
     parsed_events = Event.from_token_seq(
         [x for b in in_memory_tokens for x in b], local_midi_settings_ar_only
     )
+    assert parsed_events[0].is_separator()
     get_figure_and_open(
         events=parsed_events,
         delta=local_midi_settings_ar_only.delta,
@@ -763,10 +772,7 @@ def test_tokenize_v2_dense_sparse_piano_ar_only(
 
     # no duplicate events
     parsed_events = Event.from_token_seq([x for b in tokens_to for x in b], settings)
-
-    # each AR token is the same
-    assert len(parsed_events) - (num_ar_tokens - 1) == len(set(parsed_events))
-    assert len(parsed_events) == 883
+    assert len(parsed_events) == len(set(parsed_events)) == 883
 
     get_figure_and_open(
         events=parsed_events,
@@ -1606,7 +1612,7 @@ def test_sequence_boundaries_for_truncated_end_triple(c_major_midi_path: Path) -
     ]
 
     # check reconstructing the events
-    parsed_events = Event.from_token_seq([x for b in tokens_to for x in b], settings)
+    parsed_events = Event.from_list_of_token_seq(tokens_to, settings)
     note_strikes = [x for x in parsed_events if x.is_note_event()]
     tick_tokens = [x for x in parsed_events if x.is_tick()]
 
