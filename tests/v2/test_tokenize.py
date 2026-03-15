@@ -2081,3 +2081,109 @@ def test_no_information_loss_dense_drums_sparse_piano_for_all_anticipation_types
             _check_is_musically_same(
                 ar_token_seqs, instr_token_seqs, ar_settings, instr_settings
             )
+
+
+def test_no_information_loss_for_multiple_packed_files(
+    dense_drums_sparse_piano_midi_path: Path,
+    simple_two_instrument_midi_path: Path,
+    lmd_0_example_1_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    files_to_tokenize = [
+        dense_drums_sparse_piano_midi_path,
+        simple_two_instrument_midi_path,
+        lmd_0_example_1_midi_path,
+    ]
+    ar_settings = AnticipationV2Settings(
+        min_track_events=1,
+        context_size=512,
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+        tick_token_every_n_ticks=100,
+    )
+    # the reference
+    ar_token_seqs = []
+    stats: TokenizationStatSummary = v2_tokenize(
+        files_to_tokenize, output=ar_token_seqs, settings=ar_settings
+    )
+    assert not stats.ignored_files
+    assert stats.num_lost_tokens_left_in_buffer == 0
+    ar_events = Event.from_list_of_token_seq(ar_token_seqs, ar_settings)
+    get_figure_and_open(
+        events=ar_events,
+        delta=ar_settings.delta,
+        time_resolution=ar_settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + "_ar.html")),
+        auto_open=False,
+    )
+    span_settings = AnticipationV2Settings(
+        min_track_events=ar_settings.min_track_events,
+        context_size=ar_settings.context_size,
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        do_clip_overlapping_durations_in_midi_conversion=ar_settings.do_clip_overlapping_durations_in_midi_conversion,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+        tick_token_every_n_ticks=ar_settings.tick_token_every_n_ticks,
+    )
+    for s in range(0, 10):
+        # try a few random seeds since the span region is randomly decided
+        set_seed(s)
+        span_token_seqs = []
+        stats: TokenizationStatSummary = v2_tokenize(
+            files_to_tokenize,
+            output=span_token_seqs,
+            settings=span_settings,
+        )
+        _check_anticipation_rule_for_controls_and_token_ranges(
+            span_token_seqs, span_settings
+        )
+        assert not stats.ignored_files
+        assert stats.num_lost_tokens_left_in_buffer == 0
+
+        # check that span anticipation and autoregressive sequence tokenization are
+        # the same (musically speaking). This is important because anticipation does
+        # not add or remove information, it just restructures it. The original AR
+        # sequence must be recoverable from an anticipated sequence of the same
+        # piece.
+        _check_is_musically_same(
+            ar_token_seqs, span_token_seqs, ar_settings, span_settings
+        )
+
+    instr_settings = AnticipationV2Settings(
+        min_track_events=ar_settings.min_track_events,
+        context_size=ar_settings.context_size,
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=1,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        do_clip_overlapping_durations_in_midi_conversion=ar_settings.do_clip_overlapping_durations_in_midi_conversion,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+        tick_token_every_n_ticks=ar_settings.tick_token_every_n_ticks,
+    )
+
+    for s in range(10, 20):
+        # try a few random seeds since the instrument is randomly selected
+        set_seed(s)
+        instr_token_seqs = []
+        stats: TokenizationStatSummary = v2_tokenize(
+            files_to_tokenize,
+            output=instr_token_seqs,
+            settings=instr_settings,
+        )
+        _check_anticipation_rule_for_controls_and_token_ranges(
+            instr_token_seqs, instr_settings
+        )
+        assert not stats.ignored_files
+        assert stats.num_lost_tokens_left_in_buffer == 0
+        _check_is_musically_same(
+            ar_token_seqs, instr_token_seqs, ar_settings, instr_settings
+        )
