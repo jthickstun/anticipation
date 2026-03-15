@@ -26,4 +26,4 @@ fi
 export CUSTOM_TMP_DIR=/scratch/$USER
 mkdir -p "$CUSTOM_TMP_DIR"
 
-PYTHONPATH=. python train/v2/dataset_tokenize.py --dataset_type transcripts
+PYTHONPATH=. python train/v2/dataset_tokenize.py --dataset_type transcripts --settings_json_name "ar_only_local_midi_no_instr_limit_settings_87451b329323d36a658ac64ed9a8bb81.json"

@@ -34,6 +34,7 @@ def _process_shard(
     shard_id_and_files_to_process: tuple[int, list[Path]],
     settings: AnticipationV2Settings,
     shards_container_path: Path,
+    is_training_split: bool,
 ) -> tuple[Path, TokenizationStatSummary]:
     shard_id, files_to_process = shard_id_and_files_to_process
     work_dir = shards_container_path / f"./{shard_id}"
@@ -47,6 +48,7 @@ def _process_shard(
         output=shard_artifact_path,
         settings=settings,
         shard_id=shard_id,
+        is_training_split=is_training_split,
     )
     return shard_artifact_path, tokenized_stats_summary
 
@@ -91,13 +93,17 @@ def _get_dataset_file_from_paths(
     shards_dir: Path,
     save_to: str,
     do_shuffle: bool,
+    is_training_split: bool,
 ) -> tuple[Path, list[tuple[Path, TokenizationStatSummary]]]:
     # get division of work
     shards = _get_dataset_shards(dataset_paths, num_workers)
 
     # this is where the tokenization code is actually called
     process_one_with_args = partial(
-        _process_shard, settings=settings, shards_container_path=shards_dir
+        _process_shard,
+        settings=settings,
+        shards_container_path=shards_dir,
+        is_training_split=is_training_split,
     )
 
     # run tokenization, keep note of where results are saved
@@ -208,6 +214,7 @@ def _tokenize_dataset_in_parallel(
                 shards_dir=shards_dir_local,
                 save_to=conf["name"],
                 do_shuffle=conf["do_shuffle"],
+                is_training_split=(conf["name"] == "train"),
             )
 
             # gather any ignored file results
@@ -367,6 +374,13 @@ def parse_args() -> argparse.Namespace:
             "Which dataset to tokenize. These are expected to be in specific locations in the ./data/ folder"
         ),
     )
+    parser.add_argument(
+        "--settings_json_name",
+        type=str,
+        default=None,
+        required=True,
+        help="name to settings file, not path - must be in ./config/...",
+    )
     args = parser.parse_args()
     return args
 
@@ -375,25 +389,28 @@ if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
     args = parse_args()
 
+    settings_file_name: str = args.settings_json_name
+    settings_file_path: Path = CONFIG_ROOT / settings_file_name
+    assert settings_file_path.exists()
+    assert settings_file_path.is_file()
+    assert settings_file_path.suffix == ".json"
+
     configs = {
         "lakh": {
-            "settings": CONFIG_ROOT
-            / "ar_only_local_midi_settings_b82a7a2750e3c5836ffb9bf564720cd8.json",
+            "settings": settings_file_path,
             "raw_data_enclosing_path": DATASET_ROOT / "lmd_full",
         },
         "transcripts": {
-            "settings": CONFIG_ROOT
-            / "ar_only_local_midi_no_instr_limit_settings_87451b329323d36a658ac64ed9a8bb81.json",
+            "settings": settings_file_path,
             "raw_data_enclosing_path": DATASET_ROOT / "transcripts",
         },
         "aria": {
             # can use the same config as local lakh
-            "settings": CONFIG_ROOT
-            / "ar_only_local_midi_settings_b82a7a2750e3c5836ffb9bf564720cd8.json",
+            "settings": settings_file_path,
             "raw_data_enclosing_path": DATASET_ROOT / "aria-midi-v1-pruned-ext",
         },
     }
-    dataset_choice = configs["transcripts"]
+    dataset_choice = configs[args.dataset_type]
     main(
         settings_path=dataset_choice["settings"],
         put_shards_in_tmp=True,

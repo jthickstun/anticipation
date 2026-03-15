@@ -10,7 +10,39 @@ from typing import Optional, Union, Iterator, Iterable, TypeVar
 from anticipation.v2.config import AnticipationV2Settings
 from anticipation.v2.types import Token
 
+
 T = TypeVar("T")
+
+
+
+def min_time(
+    tokens: list[Token],
+    settings: AnticipationV2Settings,
+    seconds: bool = True,
+    instr: Optional[int] = None,
+) -> Union[int, float]:
+    mt = None
+    for time, dur, note in zip(tokens[0::3], tokens[1::3], tokens[2::3]):
+        # stop calculating at sequence separator
+        if note == settings.vocab.SEPARATOR:
+            break
+
+        if note < settings.vocab.CONTROL_OFFSET:
+            time -= settings.vocab.TIME_OFFSET
+            note -= settings.vocab.NOTE_OFFSET
+        else:
+            time -= settings.vocab.ATIME_OFFSET
+            note -= settings.vocab.ANOTE_OFFSET
+
+        # min time of a particular instrument
+        if instr is not None and instr != note // 2**7:
+            continue
+
+        mt = time if mt is None else min(mt, time)
+
+    if mt is None:
+        mt = 0
+    return mt / float(settings.time_resolution) if seconds else mt
 
 
 def max_time(

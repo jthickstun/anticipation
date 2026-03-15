@@ -289,6 +289,18 @@ class AnticipationV2Settings:
     # new data augmentation styles in v2
     augmentation_pitch_shifts: tuple[int, ...] = ()
 
+    @property
+    def max_dur(self) -> int:
+        return self.time_resolution * self.max_note_duration_in_seconds
+
+    @property
+    def max_time(self) -> int:
+        return self.time_resolution * self.max_track_time_in_seconds
+
+    @property
+    def max_note(self) -> int:
+        return self.max_midi_pitch * self.max_midi_instrument
+
     def to_dict(self) -> dict[str, Any]:
         settings = asdict(self)  # noqa
         settings["augmentation_pitch_shifts"] = tuple(

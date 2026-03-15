@@ -1,23 +1,22 @@
-import os, time
+import os
+import time
 import argparse
 from pathlib import Path
-import warnings
 
-import numpy as np
 import torch
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import OneCycleLR
 
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 
+# keep this!!!
 torch.set_float32_matmul_precision("high")
 
 from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     LearningRateMonitor,
-    TQDMProgressBar,
 )
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities import rank_zero_info
@@ -25,43 +24,20 @@ from pytorch_lightning.utilities import rank_zero_info
 from transformers import PretrainedConfig, GPT2LMHeadModel, GPT2Config
 
 from anticipation.v2.config import AnticipationV2Settings
-
-
-class PreTokenizedDataset(Dataset):
-    """
-    Must be constructed with v2 sequence packing.
-    """
-
-    def __init__(self, path: Path) -> None:
-        # O(page size) random access apparently?
-        self.data = np.load(path, mmap_mode="r")
-        assert self.data.flags["C_CONTIGUOUS"]
-
-    def __len__(self) -> int:
-        return self.data.shape[0]
-
-    def __getitem__(self, idx: int):
-        with warnings.catch_warnings():
-            # this warning is about writing to a tensor loaded in this way
-            # will result in undefined behavior, but this is the dataset, we
-            # are not going to mutate these samples
-            warnings.filterwarnings("ignore", category=UserWarning)
-            input_ids = torch.from_numpy(self.data[idx]).to(dtype=torch.long)
-
-        attention_mask = torch.ones_like(input_ids)
-        labels = input_ids.clone()
-        labels = torch.roll(labels, shifts=-1, dims=0)
-        return {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-            "labels": labels,
-        }
+from train.v2.custom_metrics import TokenPerplexity, ApproxBPS
+from train.v2.dataset_utils import PreTokenizedDataset
+from train.v2.logging_utils import (
+    GenerateSamplesOnValEnd,
+    SampleConfig,
+    MaxStepProgressBar,
+)
 
 
 class GPT2LightningModule(pl.LightningModule):
     def __init__(
         self,
         data_dir: Path,
+        settings: AnticipationV2Settings,
         learning_rate: float = 5e-5,
         warmup_steps: int = 0,
         weight_decay: float = 0.0,
@@ -84,23 +60,52 @@ class GPT2LightningModule(pl.LightningModule):
 
         self.model.gradient_checkpointing_enable()
         self.model.config.bos_token_id = self.model.config.eos_token_id = 0
+        self.anticipation_settings = settings
+
+        # --- validation split metrics ----
+        self.ppl = TokenPerplexity()
+
+        # all triples
+        self.event_ppl = TokenPerplexity()
+
+        # parts of the triple
+        self.onset_ppl = TokenPerplexity()
+        self.onset_ppl_no_ticks = TokenPerplexity()
+        self.dur_ppl = TokenPerplexity()
+        self.dur_ppl_no_ticks = TokenPerplexity()
+        self.note_instr_ppl = TokenPerplexity()
+        self.note_instr_ppl_no_ticks = TokenPerplexity()
+
+        # ticks only
+        self.tick_ppl = TokenPerplexity()
+
+        # approximate the bps using the number of ticks to roughly estimate total seconds
+        self.approx_bps = ApproxBPS()
 
     def forward(self, **inputs):
         return self.model(**inputs)
 
-    def training_step(self, batch, batch_idx):
+    def training_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
         labels = batch.pop("labels")
         outputs = self(**batch)
 
+        # keep this upcast!
+        # https://x.com/jwthickstun/status/1737134520141246938
         logits = outputs.logits.float()  # upcast logits and compute loss in fp32
         loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
         self.log("train_loss", loss.detach(), prog_bar=True, logger=True)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(
+        self, batch: dict[str, torch.Tensor], batch_idx: int
+    ) -> torch.Tensor:
         labels = batch.pop("labels")
         outputs = self(**batch)
 
+        # keep this upcast!
+        # https://x.com/jwthickstun/status/1737134520141246938
         logits = outputs.logits.float()  # upcast logits and compute loss in fp32
         loss = F.cross_entropy(logits.view(-1, logits.size(-1)), labels.view(-1))
         self.log(
@@ -111,6 +116,153 @@ class GPT2LightningModule(pl.LightningModule):
             logger=True,
             sync_dist=True,
         )
+
+        # ----- new metrics -----
+        v = self.anticipation_settings.vocab
+        tokens = batch["input_ids"]
+
+        shift_logits = logits[:, :-1, :]
+        targets = tokens[:, 1:]
+        per_tok_ce = F.cross_entropy(
+            shift_logits.reshape(-1, shift_logits.size(-1)),
+            targets.reshape(-1),
+            reduction="none",
+        ).view_as(targets)  # [bs, L-1]
+
+        # we don't really care about loss on the controls since we put those in ourselves
+        controls = (
+            (targets == v.SEPARATOR)
+            | (targets == v.ANTICIPATE)
+            | (targets == v.AUTOREGRESS)
+        )
+
+        # exclude the controls form overall perplexity
+        ppl_overall_mask: torch.Tensor = ~controls  # type: ignore
+        total_loss_sum = per_tok_ce[ppl_overall_mask].sum()
+        total_tokens = ppl_overall_mask.sum()
+        self.ppl.update(loss_sum=total_loss_sum, n_tokens=total_tokens)
+        self.log("ppl", self.ppl, on_epoch=True, prog_bar=True, sync_dist=True)
+
+        ticks = targets == v.TICK
+        tick_mask: torch.Tensor = ticks  # type: ignore
+        num_ticks = tick_mask.sum()
+
+        num_seconds_approx = (
+            num_ticks * self.anticipation_settings.tick_token_frequency_in_midi_ticks
+        ) / self.anticipation_settings.time_resolution
+        self.approx_bps.update(
+            loss_sum=total_loss_sum,
+            num_seconds=num_seconds_approx,
+            num_tokens=total_tokens,
+        )
+        self.log(
+            "approx_bps",
+            self.approx_bps,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+
+        # events are everything that isn't a control and isn't a tick
+        events: torch.Tensor = (~controls) & (~ticks)  # type: ignore
+
+        # Event index within each sequence: 0,1,2,... for event positions
+        # (non-event positions will have junk values, but we always AND with `events`)
+        event_idx = torch.cumsum(events.to(torch.int64), dim=1) - 1
+
+        # How many event tokens per sequence, and how many to keep (truncate tail to multiple of 3)
+        n_event_tokens = events.sum(dim=1).to(torch.int64)
+        n_keep_tokens = (n_event_tokens // 3) * 3
+        n_events = n_keep_tokens // 3
+        num_events_total = n_events.sum()
+
+        # drops incomplete / truncated last triple per seq if necessary
+        keep_events = events & (event_idx < n_keep_tokens.unsqueeze(1))
+
+        # isolate each part of a triple (time aka onset, duration, note x instrument)
+        onsets = keep_events & ((event_idx % 3) == 0)
+        durs = keep_events & ((event_idx % 3) == 1)
+        note_instrs = keep_events & ((event_idx % 3) == 2)
+
+        onset_loss_sum = per_tok_ce[onsets].sum()
+        dur_loss_sum = per_tok_ce[durs].sum()
+        note_instr_loss_sum = per_tok_ce[note_instrs].sum()
+        tick_loss_sum = per_tok_ce[tick_mask].sum()
+
+        # does not include the tick
+        # formulation here is approximate, following the v1 eval script
+        self.event_ppl.update(loss_sum=(3 * per_tok_ce[keep_events].mean()), n_tokens=1)
+        self.log(
+            "event_ppl",
+            self.event_ppl,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+
+        # each part of the triple (time, duration, note x instrument)
+        # both with and without the CE contributed by the tick
+        self.onset_ppl.update(
+            loss_sum=(onset_loss_sum + tick_loss_sum), n_tokens=num_events_total
+        )
+        self.log(
+            "onset_ppl",
+            self.onset_ppl,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self.onset_ppl_no_ticks.update(
+            loss_sum=onset_loss_sum, n_tokens=num_events_total
+        )
+        self.log(
+            "onset_ppl_no_ticks",
+            self.onset_ppl_no_ticks,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+
+        self.dur_ppl.update(
+            loss_sum=(dur_loss_sum + tick_loss_sum), n_tokens=num_events_total
+        )
+        self.log("dur_ppl", self.dur_ppl, on_epoch=True, prog_bar=True, sync_dist=True)
+        self.dur_ppl_no_ticks.update(loss_sum=dur_loss_sum, n_tokens=num_events_total)
+        self.log(
+            "dur_ppl_no_ticks",
+            self.dur_ppl_no_ticks,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+
+        self.note_instr_ppl.update(
+            loss_sum=(note_instr_loss_sum + tick_loss_sum),
+            n_tokens=num_events_total,
+        )
+        self.log(
+            "note_instr_ppl",
+            self.note_instr_ppl,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+        self.note_instr_ppl_no_ticks.update(
+            loss_sum=note_instr_loss_sum, n_tokens=num_events_total
+        )
+        self.log(
+            "note_instr_ppl_no_ticks",
+            self.note_instr_ppl_no_ticks,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+        )
+
+        self.tick_ppl.update(loss_sum=tick_loss_sum, n_tokens=num_ticks)
+        self.log(
+            "tick_ppl", self.tick_ppl, on_epoch=True, prog_bar=True, sync_dist=True
+        )
+
         return loss
 
     def configure_optimizers(self):
@@ -185,32 +337,8 @@ class GPT2LightningModule(pl.LightningModule):
             num_workers=4,
             shuffle=False,
             pin_memory=True,
+            persistent_workers=True,
         )
-
-
-class MaxStepProgressBar(TQDMProgressBar):
-    def __init__(self):
-        super().__init__()
-        self._persistent_bar = None
-
-    def init_train_tqdm(self):
-        if self._persistent_bar is None:
-            bar = super().init_train_tqdm()
-            bar.set_description("Training Progress")
-            self._persistent_bar = bar
-
-        return self._persistent_bar
-
-    def on_train_epoch_start(self, trainer, pl_module):
-        if self._persistent_bar is not None:
-            self._persistent_bar.set_description("Training Progress")
-
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
-        current = trainer.global_step
-        total = trainer.max_steps
-        self.train_progress_bar.n = current
-        self.train_progress_bar.total = total
-        self._persistent_bar.refresh()
 
 
 class HuggingFaceCheckpoint(ModelCheckpoint):
@@ -257,6 +385,7 @@ def main(args: argparse.Namespace) -> None:
     )
     model = GPT2LightningModule(
         data_dir=tokenized_dataset_path,
+        settings=settings,
         learning_rate=args.learning_rate,
         warmup_steps=args.warmup_steps,
         weight_decay=args.weight_decay,
@@ -286,16 +415,30 @@ def main(args: argparse.Namespace) -> None:
             config=vars(args),
         )
 
+    ddp_params = {}
+    if not args.no_ddp:
+        ddp_params["strategy"] = DDPStrategy(
+            find_unused_parameters=False, static_graph=False
+        )
+
     trainer = pl.Trainer(
         max_steps=args.num_train_steps,
-        accelerator="gpu" if torch.cuda.is_available() else "cpu",
+        # always use gpu and then thrown an error if it's unavailable - that's preferrable
+        # to defaulting to cpu imo
+        accelerator="gpu",
         devices=args.gpus_per_node,
         num_nodes=args.num_nodes,
-        strategy=DDPStrategy(find_unused_parameters=False, static_graph=False),
+        **ddp_params,
         callbacks=[
             checkpoint_callback,
             LearningRateMonitor(logging_interval="step"),
             MaxStepProgressBar(),
+            GenerateSamplesOnValEnd(
+                SampleConfig(
+                    start_after_step=args.save_midi_output_after_step,
+                    num_events_to_generate=args.num_events_to_generate_for_midi_inference,
+                )
+            ),
         ],
         enable_progress_bar=True,
         precision="bf16-mixed" if args.bf16 else 32,
@@ -384,6 +527,19 @@ def get_argparser() -> argparse.ArgumentParser:
         help="Number of steps between checkpoints",
     )  # set back to 1000
 
+    parser.add_argument(
+        "--save_midi_output_after_step",
+        type=int,
+        default=5000,
+        help="After this number of steps, at the end of a validation epoch, we will otout MIDI to wandb.",
+    )
+    parser.add_argument(
+        "--num_events_to_generate_for_midi_inference",
+        type=int,
+        default=100,
+        help="Number of EVENTS, not tokens. An event is a triple or tick.",
+    )
+
     # System parameters
     parser.add_argument("--num_nodes", type=int, default=1, help="Number of nodes")
     parser.add_argument(
@@ -392,6 +548,11 @@ def get_argparser() -> argparse.ArgumentParser:
 
     parser.add_argument(
         "--use_wandb", action="store_true", help="whether to use wandb logging"
+    )
+    parser.add_argument(
+        "--no_ddp",
+        action="store_true",
+        help="whether to ignore using DDP - just for testing really.",
     )
     return parser
 

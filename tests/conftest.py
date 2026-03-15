@@ -229,6 +229,7 @@ def local_midi_settings_ar_only(local_midi_vocab: Vocab) -> AnticipationV2Settin
         num_workers_in_dataset_construction=10,
         # toggle for cap on instruments
         # max_track_instruments=129,
+        # augmentation_pitch_shifts=(-5, -3, -2, -1, 1, 2, 3, 4, 5)
     )
 
 

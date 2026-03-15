@@ -1,6 +1,8 @@
 from pathlib import Path
 from operator import itemgetter
+from collections import defaultdict
 
+import mido
 from symusic import Score, TimeUnit
 
 from anticipation.v2.config import AnticipationV2Settings
@@ -142,3 +144,77 @@ def midi_to_compound(
     # remove the absolute time, just return the quantized one
     tokens = [x for b in compounds for x in b[1:]]
     return tokens
+
+
+def compound_to_midi(
+    tokens: list[Token], settings: AnticipationV2Settings
+) -> mido.MidiFile:
+    assert len(tokens) % 5 == 0
+
+    mid = mido.MidiFile()
+    mid.ticks_per_beat = settings.time_resolution // 2  # 2 beats/second at quarter=120
+
+    it = iter(tokens)
+    time_index = defaultdict(list)
+    for _, (time_in_ticks, duration, note, instrument, velocity) in enumerate(
+        zip(it, it, it, it, it)
+    ):
+        time_index[(time_in_ticks, 0)].append((note, instrument, velocity))  # 0 = onset
+        time_index[(time_in_ticks + duration, 1)].append(
+            (note, instrument, velocity)
+        )  # 1 = offset
+
+    track_idx = {}  # maps instrument to (track number, current time)
+    num_tracks = 0
+    for time_in_ticks, event_type in sorted(time_index.keys()):
+        for note, instrument, velocity in time_index[(time_in_ticks, event_type)]:
+            if event_type == 0:  # onset
+                try:
+                    track, previous_time, idx = track_idx[instrument]
+                except KeyError:
+                    idx = num_tracks
+                    previous_time = 0
+                    track = mido.MidiTrack()
+                    mid.tracks.append(track)
+                    if instrument == 128:  # drums always go on channel 9
+                        idx = 9
+                        message = mido.Message("program_change", channel=idx, program=0)
+                    else:
+                        message = mido.Message(
+                            "program_change", channel=idx, program=instrument
+                        )
+                    track.append(message)
+                    num_tracks += 1
+                    if num_tracks == 9:
+                        num_tracks += 1  # skip the drums track
+
+                # channel idx
+                assert idx <= 16
+                track.append(
+                    mido.Message(
+                        "note_on",
+                        note=note,
+                        channel=idx,
+                        velocity=velocity,
+                        time=time_in_ticks - previous_time,
+                    )
+                )
+                track_idx[instrument] = (track, time_in_ticks, idx)
+            else:  # offset
+                try:
+                    track, previous_time, idx = track_idx[instrument]
+                except KeyError:
+                    # shouldn't happen because we should have a corresponding onset
+                    if settings.debug:
+                        print("IGNORING bad offset")
+                    continue
+                track.append(
+                    mido.Message(
+                        "note_off",
+                        note=note,
+                        channel=idx,
+                        time=time_in_ticks - previous_time,
+                    )
+                )
+                track_idx[instrument] = (track, time_in_ticks, idx)
+    return mid

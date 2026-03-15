@@ -4,8 +4,8 @@
 #SBATCH -n 1
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=50GB
-#SBATCH -t 20:00:00
-#SBATCH -J tokenize_dataset_aria
+#SBATCH -t 01:00:00
+#SBATCH -J tokenize_dataset_lakh
 #SBATCH -e output/slurm_logs/%j/stderr.err
 #SBATCH -o output/slurm_logs/%j/stdout.out
 set -e
@@ -26,4 +26,4 @@ fi
 export CUSTOM_TMP_DIR=/scratch/$USER
 mkdir -p "$CUSTOM_TMP_DIR"
 
-PYTHONPATH=. python train/v2/dataset_tokenize.py --dataset_type aria --settings_json_name "ar_only_local_midi_settings_b82a7a2750e3c5836ffb9bf564720cd8.json"
+PYTHONPATH=. python train/v2/dataset_tokenize.py --dataset_type lakh --settings_json_name "ar_only_local_midi_settings_b82a7a2750e3c5836ffb9bf564720cd8.json"
