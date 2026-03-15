@@ -151,7 +151,7 @@ def _add_boundaries_to_subplot(
                 row=1,
                 col=1,
             )
-        elif special_code == EventSpecialCode.AUTOREGRESSIVE_TOKEN:
+        elif special_code == EventSpecialCode.ANTICIPATION_TOKEN:
             fig.add_shape(
                 type="line",
                 x0=row["start"],

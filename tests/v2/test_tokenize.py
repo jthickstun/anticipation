@@ -64,10 +64,16 @@ def _check_anticipation_rule_for_controls_and_token_ranges(
     parsed_events = Event.from_token_seq(flattened_tokens, settings)
 
     # rule: controls must always come after a tick, or follow another control
+    # ... or if the context was split, they need to follow the flag token, which
+    # in this case MUST be `anticipate`
     for i, e in enumerate(parsed_events):
         if e.is_control:
             prev_event = parsed_events[i - 1]
-            assert prev_event.is_control or prev_event.is_tick()
+            assert (
+                prev_event.is_control
+                or prev_event.is_tick()
+                or prev_event.is_anticipate()
+            )
 
     # check the ranges of all tokens
     for i, e in enumerate(parsed_events):
@@ -121,6 +127,35 @@ def _check_anticipation_rule_for_controls_and_token_ranges(
                 assert (
                     0 <= settings.vocab.TIME_OFFSET <= t < d < ni < settings.vocab.TICK
                 )
+
+
+def _check_is_musically_same(
+    token_seq_list_a: list[list[Token]],
+    token_seq_list_b: list[list[Token]],
+    settings_a: AnticipationV2Settings,
+    settings_b: AnticipationV2Settings,
+) -> None:
+    events_a = Event.from_list_of_token_seq(token_seq_list_a, settings_a)
+    events_b = Event.from_list_of_token_seq(token_seq_list_b, settings_b)
+
+    # remove ticks and separators, anything that isn't a 'musical' event
+    events_a_filtered = [x for x in events_a if x.is_note_event()]
+    events_b_filtered = [x for x in events_b if x.is_note_event()]
+
+    assert len(events_a_filtered) == len(events_b_filtered)
+
+    events_a_filtered.sort(
+        key=lambda x: (x.absolute_time, x.midi_instrument(), x.midi_note())
+    )
+    events_b_filtered.sort(
+        key=lambda x: (x.absolute_time, x.midi_instrument(), x.midi_note())
+    )
+
+    for i in range(len(events_a_filtered)):
+        # ensure that the musical semantics are preserved
+        a = events_a_filtered[i]
+        b = events_b_filtered[i]
+        assert a.is_musically_equal(b)
 
 
 @pytest.fixture
@@ -803,8 +838,8 @@ def test_no_information_loss_or_added_when_anticipation_applied_dense_sparse_pia
     )
     v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_ar, settings_ar)
     _check_anticipation_rule_for_controls_and_token_ranges(tokens_ar, settings_ar)
-    events_ar = Event.from_token_seq([x for b in tokens_ar for x in b], settings_ar)
-    num_ticks_ar = len([x for x in events_ar if x.is_tick()])
+    events_ar = Event.from_list_of_token_seq(tokens_ar, settings_ar)
+
     get_figure_and_open(
         events=events_ar,
         delta=settings_ar.delta,
@@ -812,7 +847,6 @@ def test_no_information_loss_or_added_when_anticipation_applied_dense_sparse_pia
         path=(VISUALIZATIONS_PATH / (get_current_function_name() + "_ar.html")),
         auto_open=False,
     )
-    events_ar_filtered = [x for x in events_ar if x.is_note_event()]
 
     # tokenize using with span anticipation
     tokens_span = []
@@ -828,11 +862,12 @@ def test_no_information_loss_or_added_when_anticipation_applied_dense_sparse_pia
     )
     v2_tokenize([dense_drums_sparse_piano_midi_path], tokens_span, settings_span)
     _check_anticipation_rule_for_controls_and_token_ranges(tokens_span, settings_span)
-    events_span = Event.from_token_seq(
-        [x for b in tokens_span for x in b], settings_span
-    )
-    num_ticks_span = len([x for x in events_span if x.is_tick()])
+    events_span = Event.from_list_of_token_seq(tokens_span, settings_span)
 
+    # check number of ticks is constant, note that this won't be true for
+    # instrument anticipation since we need to prefix with ticks...
+    num_ticks_ar = len([x for x in events_ar if x.is_tick()])
+    num_ticks_span = len([x for x in events_span if x.is_tick()])
     assert num_ticks_ar == num_ticks_span
 
     get_figure_and_open(
@@ -843,18 +878,7 @@ def test_no_information_loss_or_added_when_anticipation_applied_dense_sparse_pia
         auto_open=False,
     )
 
-    events_span_filtered = [x for x in events_span if x.is_note_event()]
-
-    assert len(events_span_filtered) == len(events_ar_filtered)
-
-    events_ar_filtered.sort(key=lambda x: x.absolute_time)
-    events_span_filtered.sort(key=lambda x: x.absolute_time)
-
-    for i in range(len(events_ar_filtered)):
-        # ensure that the musical semantics are preserved
-        a = events_ar_filtered[i]
-        b = events_span_filtered[i]
-        assert a.is_musically_equal(b)
+    _check_is_musically_same(tokens_ar, tokens_span, settings_ar, settings_span)
 
 
 def test_tokenize_v2_lakh_instrument_anticipation_blockwise(
@@ -883,11 +907,8 @@ def test_tokenize_v2_lakh_instrument_anticipation_blockwise(
 
         _check_anticipation_rule_for_controls_and_token_ranges(tokens_to, settings)
 
-        assert not stats.ignored_files
-        parsed_events = Event.from_token_seq(
-            [x for b in tokens_to for x in b], settings
-        )
-
+    assert not stats.ignored_files
+    parsed_events = Event.from_list_of_token_seq(tokens_to, settings)
     get_figure_and_open(
         events=parsed_events,
         delta=settings.delta,
@@ -1900,3 +1921,109 @@ def test_apply_pitch_augmentation(c_major_midi_path: Path) -> None:
     # there are 6 alterations, 1 original
     num_sep_tokens = all_tokens.count(settings.vocab.SEPARATOR)
     assert num_sep_tokens == 7
+
+
+def test_no_information_loss_dense_drums_sparse_piano_for_all_anticipation_types(
+    dense_drums_sparse_piano_midi_path: Path,
+    local_midi_vocab: Vocab,
+) -> None:
+    ar_settings = AnticipationV2Settings(
+        min_track_events=1,
+        context_size=512,
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+        tick_token_every_n_ticks=100,
+    )
+    # the reference
+    ar_token_seqs = []
+    stats: TokenizationStatSummary = v2_tokenize(
+        [dense_drums_sparse_piano_midi_path], output=ar_token_seqs, settings=ar_settings
+    )
+    assert not stats.ignored_files
+    assert stats.num_lost_tokens_left_in_buffer == 0
+    ar_events = Event.from_list_of_token_seq(ar_token_seqs, ar_settings)
+    get_figure_and_open(
+        events=ar_events,
+        delta=ar_settings.delta,
+        time_resolution=ar_settings.time_resolution,
+        path=(VISUALIZATIONS_PATH / (get_current_function_name() + "_ar.html")),
+        auto_open=False,
+    )
+    all_instruments = list(
+        sorted(set([x.midi_instrument() for x in ar_events if x.is_note_event()]))
+    )
+    # piano, drums
+    assert all_instruments == [0, 128]
+
+    span_settings = AnticipationV2Settings(
+        min_track_events=ar_settings.min_track_events,
+        context_size=ar_settings.context_size,
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        do_clip_overlapping_durations_in_midi_conversion=ar_settings.do_clip_overlapping_durations_in_midi_conversion,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+        tick_token_every_n_ticks=ar_settings.tick_token_every_n_ticks,
+    )
+    for s in range(0, 10):
+        # try a few random seeds since the span region is randomly decided
+        set_seed(s)
+        span_token_seqs = []
+        stats: TokenizationStatSummary = v2_tokenize(
+            [dense_drums_sparse_piano_midi_path],
+            output=span_token_seqs,
+            settings=span_settings,
+        )
+        _check_anticipation_rule_for_controls_and_token_ranges(
+            span_token_seqs, span_settings
+        )
+        assert not stats.ignored_files
+        assert stats.num_lost_tokens_left_in_buffer == 0
+
+        # check that span anticipation and autoregressive sequence tokenization are
+        # the same (musically speaking). This is important because anticipation does
+        # not add or remove information, it just restructures it. The original AR
+        # sequence must be recoverable from an anticipated sequence of the same
+        # piece.
+        _check_is_musically_same(
+            ar_token_seqs, span_token_seqs, ar_settings, span_settings
+        )
+
+    instr_settings = AnticipationV2Settings(
+        min_track_events=ar_settings.min_track_events,
+        context_size=ar_settings.context_size,
+        vocab=local_midi_vocab,
+        num_autoregressive_seq_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=1,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        do_clip_overlapping_durations_in_midi_conversion=ar_settings.do_clip_overlapping_durations_in_midi_conversion,
+        debug=True,
+        debug_flush_remaining_token_buffer=True,
+        tick_token_every_n_ticks=ar_settings.tick_token_every_n_ticks,
+    )
+    for instrument_aug_choice in all_instruments:
+        with patch(
+            "anticipation.v2.tokenize._sample_instrument_subset",
+            return_value=[[instrument_aug_choice]],
+        ):
+            instr_token_seqs = []
+            stats: TokenizationStatSummary = v2_tokenize(
+                [dense_drums_sparse_piano_midi_path],
+                output=instr_token_seqs,
+                settings=instr_settings,
+            )
+            _check_anticipation_rule_for_controls_and_token_ranges(
+                instr_token_seqs, instr_settings
+            )
+            assert not stats.ignored_files
+            assert stats.num_lost_tokens_left_in_buffer == 0
+            _check_is_musically_same(
+                ar_token_seqs, instr_token_seqs, ar_settings, instr_settings
+            )

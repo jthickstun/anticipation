@@ -416,12 +416,6 @@ class SequencePacker:
                     buf = [*doc.control_prefix]
                     current_len += len(doc.control_prefix)
 
-                if v2_ops.is_control_triple(tup, self._settings) and current_len == 0:
-                    # if this is the first non-flag token in the buffer, and
-                    # it is a control, ensure it follows a tick
-                    current_fragments[doc].append((self._settings.vocab.TICK,))
-                    current_len += 1
-
                 # each group must be associated with its parent document
                 # because the parent document might need to transform it
                 current_fragments[doc].append(tup)
@@ -466,14 +460,7 @@ class SequencePacker:
                         to_add = v2_ops.get_truncated_token_groups_from_truncated_flat_token_sequence(
                             truncated_part, mutated_tokens
                         )
-                        buf = [x for b in to_add for x in b]
-
-                        # enforce rule that control always follows tick
-                        if v2_ops.is_control_triple(to_add[-1], self._settings):
-                            buf.insert(0, self._settings.vocab.TICK)
-
-                        buf = [*doc.control_prefix] + buf
-                        current_len += len(doc.control_prefix)
+                        buf = [*doc.control_prefix] + [x for b in to_add for x in b]
                     else:
                         # nothing was cut off
                         buf = []
