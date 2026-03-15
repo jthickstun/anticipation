@@ -1216,14 +1216,15 @@ def test_sequence_packing_file_boundaries_with_mixed_augmentations(
     assert stats.num_given_files == 3
     assert stats.num_tokenized_files == 3
     assert stats.num_sequences == len(sequences) == 298
-    # parsed_events = Event.from_token_seq(
-    #     [x for b in in_memory_tokens for x in b], settings
-    # )
     boundaries = []
     for i in range(1, len(sequences)):
         curr_seq = sequences[i]
         if curr_seq.count(settings.vocab.SEPARATOR) > 0:
             boundaries.append(i)
+
+    # 3 files, 3 styles of tokenizing for each of them
+    # sep is in between all 9, so there are 8 boundaries.
+    assert len(boundaries) == 8
 
     # boundary between `lmd_0_example_1_midi_path` AR and
     # `lmd_0_example_1_midi_path` Instrument Anticipation
@@ -1233,8 +1234,61 @@ def test_sequence_packing_file_boundaries_with_mixed_augmentations(
     assert boundary_1[0] == settings.vocab.AUTOREGRESS
     assert boundary_1[split_idx + 1] == settings.vocab.ANTICIPATE
 
-    # print(boundaries)
-    # TODO: see what happens at the boundaries, assert its correctness
+    # boundary between `lmd_0_example_1_midi_path` Instrument Anticipation and
+    # `lmd_0_example_1_midi_path` Span Anticipation
+    boundary_2: list[int] = sequences[boundaries[1]]
+    split_idx = boundary_2.index(settings.vocab.SEPARATOR)
+
+    assert boundary_2[0] == settings.vocab.ANTICIPATE
+    assert boundary_2[split_idx + 1] == settings.vocab.ANTICIPATE
+
+    # boundary between `lmd_0_example_1_midi_path` Span Anticipation and
+    # `lmd_0_example_2_midi_path` AR
+    boundary_3: list[int] = sequences[boundaries[2]]
+    split_idx = boundary_3.index(settings.vocab.SEPARATOR)
+
+    assert boundary_3[0] == settings.vocab.ANTICIPATE
+    assert boundary_3[split_idx + 1] == settings.vocab.AUTOREGRESS
+
+    # boundary between `lmd_0_example_2_midi_path` AR
+    # `lmd_0_example_2_midi_path` Instrument Anticipation
+    boundary_4: list[int] = sequences[boundaries[3]]
+    split_idx = boundary_4.index(settings.vocab.SEPARATOR)
+
+    assert boundary_4[0] == settings.vocab.AUTOREGRESS
+    assert boundary_4[split_idx + 1] == settings.vocab.ANTICIPATE
+
+    # boundary between `lmd_0_example_2_midi_path` Instrument Anticipation
+    # `lmd_0_example_2_midi_path` Span Anticipation
+    boundary_5: list[int] = sequences[boundaries[4]]
+    split_idx = boundary_5.index(settings.vocab.SEPARATOR)
+
+    assert boundary_5[0] == settings.vocab.ANTICIPATE
+    assert boundary_5[split_idx + 1] == settings.vocab.ANTICIPATE
+
+    # boundary between `lmd_0_example_2_midi_path` Span Anticipation
+    # `dense_drums_sparse_piano_midi_path` AR
+    boundary_6: list[int] = sequences[boundaries[5]]
+    split_idx = boundary_6.index(settings.vocab.SEPARATOR)
+
+    assert boundary_6[0] == settings.vocab.ANTICIPATE
+    assert boundary_6[split_idx + 1] == settings.vocab.AUTOREGRESS
+
+    # boundary between `dense_drums_sparse_piano_midi_path` AR and
+    # `dense_drums_sparse_piano_midi_path` Instrument Anticipation
+    boundary_7: list[int] = sequences[boundaries[6]]
+    split_idx = boundary_7.index(settings.vocab.SEPARATOR)
+
+    assert boundary_7[0] == settings.vocab.AUTOREGRESS
+    assert boundary_7[split_idx + 1] == settings.vocab.ANTICIPATE
+
+    # boundary between `dense_drums_sparse_piano_midi_path` Instrument Anticipation
+    # `dense_drums_sparse_piano_midi_path` Span Anticipation
+    boundary_8: list[int] = sequences[boundaries[7]]
+    split_idx = boundary_8.index(settings.vocab.SEPARATOR)
+
+    assert boundary_8[0] == settings.vocab.ANTICIPATE
+    assert boundary_8[split_idx + 1] == settings.vocab.ANTICIPATE
 
 
 def test_sequence_packing_file_boundaries_with_mixed_augmentations_2(
