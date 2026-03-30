@@ -3,10 +3,38 @@
 # NOT ./my_script_name.sh, or sh my_script_name.sh
 set -e
 
+init_conda() {
+  # helper: source file if it exists
+  _try_source() {
+    local path="$1"
+    [[ -f "$path" ]] || return 1
+    # shellcheck disable=SC1090
+    source "$path"
+  }
+
+  # Prefer conda’s reported base, if conda is on PATH
+  if command -v conda >/dev/null 2>&1; then
+    local base
+    base="$(conda info --base 2>/dev/null || true)"
+    if [[ -n "${base:-}" ]] && _try_source "$base/etc/profile.d/conda.sh"; then
+      return 0
+    fi
+  fi
+
+  # Fallbacks
+  _try_source "$HOME/miniconda3/etc/profile.d/conda.sh" && return 0
+  _try_source "$HOME/anaconda3/etc/profile.d/conda.sh" && return 0
+
+  echo "Error: could not locate conda or conda.sh. Install conda or add it to PATH." >&2
+  return 1
+}
+
+if ! init_conda; then
+  exit 1
+fi
+
 # cd to the location of this file on disk
 cd "$(dirname -- "$0")"
-
-source "$(conda info --base)/etc/profile.d/conda.sh"
 
 # create a conda environment
 conda create --prefix ./env python=3.11 --yes
@@ -32,6 +60,10 @@ pip install tqdm
 pip install pandas
 pip install ruff
 pip install plotly
+
+conda activate ./env
+conda install pytorch torchvision torchaudio --yes
+pip install lightning
 
 # run the tests
 sh run_tests.sh

@@ -1,23 +1,11 @@
-import os
 from pathlib import Path
 from argparse import ArgumentParser
 from multiprocessing import Pool, RLock
-from glob import glob
 
 from tqdm import tqdm
 
 from anticipation import config as v1_config
 from anticipation.tokenize import tokenize, tokenize_ia
-from anticipation.v2.config import AnticipationV2Settings, Vocab
-
-
-V2_AR_ONLY = AnticipationV2Settings(
-    vocab=Vocab(),
-    num_autoregressive_seq_per_midi_file=1,
-    num_span_anticipation_augmentations_per_midi_file=0,
-    num_instrument_anticipation_augmentations_per_midi_file=0,
-    num_random_anticipation_augmentations_per_midi_file=0,
-)
 
 
 def main(args):

@@ -1,5 +1,6 @@
 """Pytest common fixtures and utility functions for test suite."""
 
+import sys
 import tempfile
 import importlib
 from pathlib import Path
@@ -11,6 +12,7 @@ from anticipation.convert import midi_to_compound
 
 # python itself has a top-level module named `tokenize`
 from anticipation.tokenize import tokenize as anticipation_tokenize
+from anticipation.v2.config import AnticipationV2Settings, Vocab, make_vocab
 
 TestConfigPatcher = Callable[..., None]
 
@@ -24,7 +26,23 @@ VISUALIZATIONS_PATH.mkdir(exist_ok=True)
 
 @pytest.fixture
 def c_major_midi_path() -> Path:
+    # deliberately simple MIDI file for diagnostic purposes
+    # this is a C major scale starting at C1, with a new note every
+    # 50 ticks. The C of the next octave is omitted, so it goes:
+    # C1, D1, E1, F1, G1, A1, B1, C1, (rest for 50 ticks), D2, E2, ...
+    # up until C5.
+    # There are 29 notes in total.
     return TEST_DATA_PATH / "cmajor.mid"
+
+
+@pytest.fixture
+def simple_two_instrument_midi_path() -> Path:
+    return TEST_DATA_PATH / "simple_2_instrument.mid"
+
+
+@pytest.fixture
+def dense_drums_sparse_piano_midi_path() -> Path:
+    return TEST_DATA_PATH / "dense_drums_sparse_piano.mid"
 
 
 @pytest.fixture
@@ -189,3 +207,80 @@ def get_tokens_from_midi_file_v1(
 def get_tokens_from_text_file(tokens_file: Path) -> list[list[int]]:
     tokens: str = Path(tokens_file).read_text()
     return _parse_midi_tokenized_text(tokens)
+
+
+@pytest.fixture
+def local_midi_vocab() -> Vocab:
+    return make_vocab(
+        tick_token_every_n_ticks=100,
+        max_note_duration_in_seconds=10,
+        time_resolution=100,
+    )
+
+
+@pytest.fixture
+def local_midi_settings_ar_only(local_midi_vocab: Vocab) -> AnticipationV2Settings:
+    return AnticipationV2Settings(
+        num_autoregressive_seq_per_midi_file=1,
+        num_span_anticipation_augmentations_per_midi_file=0,
+        num_instrument_anticipation_augmentations_per_midi_file=0,
+        vocab=local_midi_vocab,
+        tick_token_every_n_ticks=100,
+        num_workers_in_dataset_construction=10,
+        # toggle for cap on instruments
+        # max_track_instruments=129,
+        # augmentation_pitch_shifts=(-5, -3, -2, -1, 1, 2, 3, 4, 5)
+    )
+
+
+@pytest.fixture
+def local_midi_settings_anticipation(local_midi_vocab: Vocab) -> AnticipationV2Settings:
+    return AnticipationV2Settings(
+        num_autoregressive_seq_per_midi_file=1,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=1,
+        vocab=local_midi_vocab,
+        tick_token_every_n_ticks=100,
+        num_workers_in_dataset_construction=10,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+    )
+
+
+@pytest.fixture
+def local_midi_settings_anticipation_ctx_4096(
+    local_midi_vocab: Vocab,
+) -> AnticipationV2Settings:
+    return AnticipationV2Settings(
+        num_autoregressive_seq_per_midi_file=1,
+        num_span_anticipation_augmentations_per_midi_file=1,
+        num_instrument_anticipation_augmentations_per_midi_file=1,
+        vocab=local_midi_vocab,
+        tick_token_every_n_ticks=100,
+        num_workers_in_dataset_construction=10,
+        do_clip_overlapping_durations_in_midi_conversion=False,
+        context_size=4096,
+    )
+
+
+def get_current_function_name() -> str:
+    return sys._getframe(1).f_code.co_name  # noqa
+
+
+def save_tokens_as_file(tokens: list[list[int]], save_to: Path) -> None:
+    assert len(tokens) >= 1
+    assert isinstance(tokens, list)
+    assert isinstance(tokens[0], list)
+    t = ""
+    for token_seq in tokens:
+        t += ",".join(map(str, token_seq)) + "\n"
+    save_to.write_text(t.strip())
+
+
+def get_tokens_from_file(from_path: Path) -> list[list[int]]:
+    assert from_path.is_file()
+    assert from_path.exists()
+    t = from_path.read_text().split("\n")
+    parsed = []
+    for s in t:
+        parsed.append([int(x) for x in s.split(",")])
+    return parsed

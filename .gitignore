@@ -1,8 +1,11 @@
 .idea
 env/
 symusic/
+output/
+lightning_logs/
 data/
 tests/visualizations
 __pycache__
 .DS_Store
+*.swp
 *.bin

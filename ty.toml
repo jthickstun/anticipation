@@ -1,0 +1,3 @@
+[environment]
+python = "./env/bin/python"
+extra-paths = ["./anticipation", "./train", "./eval", "./tests"]

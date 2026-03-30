@@ -55,13 +55,13 @@ def test_parse_event_instances(v1_default_settings: AnticipationV2Settings) -> N
     token_seq = [0, 10050, 11036, 50, 10050, 11038, 100, 10050, 11040]
     event_seq = Event.from_token_seq(token_seq, v1_default_settings)
     assert event_seq[0] == Event.from_midi_values(
-        0, 50, 0, "C1", original_idx_in_token_seq=0
+        0, 50, 0, "C1", settings=v1_default_settings, original_idx_in_token_seq=0
     )
     assert event_seq[1] == Event.from_midi_values(
-        50, 50, 0, "D1", original_idx_in_token_seq=3
+        50, 50, 0, "D1", settings=v1_default_settings, original_idx_in_token_seq=3
     )
     assert event_seq[2] == Event.from_midi_values(
-        100, 50, 0, "E1", original_idx_in_token_seq=6
+        100, 50, 0, "E1", settings=v1_default_settings, original_idx_in_token_seq=6
     )
 
 
@@ -104,51 +104,56 @@ def test_extract_span_and_anticipate_for_small_sequence(
 
     events = ops.pad(events, end_time, density=padding_density)
     assert len(events) == 66 + (3 * 3)
+    s = v1_default_settings
     assert events == [
-        *Event.from_midi_values(0, 50, 0, "C1").as_tokens(),
-        *Event.from_midi_values(50, 50, 0, "D1").as_tokens(),
-        *Event.from_midi_values(100, 50, 0, "E1").as_tokens(),
-        *Event.from_midi_values(150, 50, 0, "F1").as_tokens(),
-        *Event.from_midi_values(200, 50, 0, "G1").as_tokens(),
-        *Event.from_midi_values(250, 50, 0, "A1").as_tokens(),
+        *Event.from_midi_values(0, 50, 0, "C1", s).as_tokens(),
+        *Event.from_midi_values(50, 50, 0, "D1", s).as_tokens(),
+        *Event.from_midi_values(100, 50, 0, "E1", s).as_tokens(),
+        *Event.from_midi_values(150, 50, 0, "F1", s).as_tokens(),
+        *Event.from_midi_values(200, 50, 0, "G1", s).as_tokens(),
+        *Event.from_midi_values(250, 50, 0, "A1", s).as_tokens(),
         # span: 269-400
-        *Event.from_midi_values(250 + padding_density * 1, 0, 0, "REST").as_tokens(),
-        *Event.from_midi_values(450, 50, 0, "D2").as_tokens(),
-        *Event.from_midi_values(500, 50, 0, "E2").as_tokens(),
-        *Event.from_midi_values(550, 50, 0, "F2").as_tokens(),
-        *Event.from_midi_values(600, 50, 0, "G2").as_tokens(),
-        *Event.from_midi_values(650, 50, 0, "A2").as_tokens(),
-        *Event.from_midi_values(700, 50, 0, "B2").as_tokens(),
-        *Event.from_midi_values(750, 50, 0, "C3").as_tokens(),
-        *Event.from_midi_values(850, 50, 0, "D3").as_tokens(),
-        *Event.from_midi_values(900, 50, 0, "E3").as_tokens(),
-        *Event.from_midi_values(950, 50, 0, "F3").as_tokens(),
-        *Event.from_midi_values(1000, 50, 0, "G3").as_tokens(),
-        *Event.from_midi_values(1050, 50, 0, "A3").as_tokens(),
+        *Event.from_midi_values(250 + padding_density * 1, 0, 0, "REST", s).as_tokens(),
+        *Event.from_midi_values(450, 50, 0, "D2", s).as_tokens(),
+        *Event.from_midi_values(500, 50, 0, "E2", s).as_tokens(),
+        *Event.from_midi_values(550, 50, 0, "F2", s).as_tokens(),
+        *Event.from_midi_values(600, 50, 0, "G2", s).as_tokens(),
+        *Event.from_midi_values(650, 50, 0, "A2", s).as_tokens(),
+        *Event.from_midi_values(700, 50, 0, "B2", s).as_tokens(),
+        *Event.from_midi_values(750, 50, 0, "C3", s).as_tokens(),
+        *Event.from_midi_values(850, 50, 0, "D3", s).as_tokens(),
+        *Event.from_midi_values(900, 50, 0, "E3", s).as_tokens(),
+        *Event.from_midi_values(950, 50, 0, "F3", s).as_tokens(),
+        *Event.from_midi_values(1000, 50, 0, "G3", s).as_tokens(),
+        *Event.from_midi_values(1050, 50, 0, "A3", s).as_tokens(),
         # span: 1087-1200
-        *Event.from_midi_values(1050 + padding_density * 1, 0, 0, "REST").as_tokens(),
+        *Event.from_midi_values(
+            1050 + padding_density * 1, 0, 0, "REST", s
+        ).as_tokens(),
         # span: 1250-1350
-        *Event.from_midi_values(1050 + padding_density * 2, 0, 0, "REST").as_tokens(),
-        *Event.from_midi_values(1350, 50, 0, "F4").as_tokens(),
-        *Event.from_midi_values(1400, 50, 0, "G4").as_tokens(),
-        *Event.from_midi_values(1450, 50, 0, "A4").as_tokens(),
-        *Event.from_midi_values(1500, 50, 0, "B4").as_tokens(),
+        *Event.from_midi_values(
+            1050 + padding_density * 2, 0, 0, "REST", s
+        ).as_tokens(),
+        *Event.from_midi_values(1350, 50, 0, "F4", s).as_tokens(),
+        *Event.from_midi_values(1400, 50, 0, "G4", s).as_tokens(),
+        *Event.from_midi_values(1450, 50, 0, "A4", s).as_tokens(),
+        *Event.from_midi_values(1500, 50, 0, "B4", s).as_tokens(),
         # span: 1530-1650
     ]
     assert controls == [
         # Q: shouldn't it instead be v.ANOTE_OFFSET + get_note_instrument_token(...)?
         # A: no because, the note, duration tokens are exactly the event tokens + the control offset
         # time here is the original time the note occurred in the sequence
-        *Event.from_midi_values(300, 50, 0, "B1", is_control=True).as_tokens(),
-        *Event.from_midi_values(350, 50, 0, "C2", is_control=True).as_tokens(),
+        *Event.from_midi_values(300, 50, 0, "B1", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(350, 50, 0, "C2", s, is_control=True).as_tokens(),
         # ...
-        *Event.from_midi_values(1100, 50, 0, "B3", is_control=True).as_tokens(),
-        *Event.from_midi_values(1150, 50, 0, "C4", is_control=True).as_tokens(),
+        *Event.from_midi_values(1100, 50, 0, "B3", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(1150, 50, 0, "C4", s, is_control=True).as_tokens(),
         # ...
-        *Event.from_midi_values(1250, 50, 0, "D4", is_control=True).as_tokens(),
-        *Event.from_midi_values(1300, 50, 0, "E4", is_control=True).as_tokens(),
+        *Event.from_midi_values(1250, 50, 0, "D4", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(1300, 50, 0, "E4", s, is_control=True).as_tokens(),
         # ...
-        *Event.from_midi_values(1550, 50, 0, "C5", is_control=True).as_tokens(),
+        *Event.from_midi_values(1550, 50, 0, "C5", s, is_control=True).as_tokens(),
     ]
 
     # implicitly: delta = (anticipation_interval_seconds * config.TIME_RESOLUTION),
@@ -161,43 +166,47 @@ def test_extract_span_and_anticipate_for_small_sequence(
     # anticipation interleaves controls and events s.t. controls appear after
     # stopping times
     assert tokens == [
-        *Event.from_midi_values(0, 50, 0, "C1").as_tokens(),
-        *Event.from_midi_values(50, 50, 0, "D1").as_tokens(),
-        *Event.from_midi_values(100, 50, 0, "E1").as_tokens(),
-        *Event.from_midi_values(150, 50, 0, "F1").as_tokens(),
-        *Event.from_midi_values(200, 50, 0, "G1").as_tokens(),
+        *Event.from_midi_values(0, 50, 0, "C1", s).as_tokens(),
+        *Event.from_midi_values(50, 50, 0, "D1", s).as_tokens(),
+        *Event.from_midi_values(100, 50, 0, "E1", s).as_tokens(),
+        *Event.from_midi_values(150, 50, 0, "F1", s).as_tokens(),
+        *Event.from_midi_values(200, 50, 0, "G1", s).as_tokens(),
         # B1 approx 100 ticks before its time
-        *Event.from_midi_values(300, 50, 0, "B1", is_control=True).as_tokens(),
-        *Event.from_midi_values(250, 50, 0, "A1").as_tokens(),
+        *Event.from_midi_values(300, 50, 0, "B1", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(250, 50, 0, "A1", s).as_tokens(),
         # C2 approx 100 ticks before its time
-        *Event.from_midi_values(350, 50, 0, "C2", is_control=True).as_tokens(),
-        *Event.from_midi_values(250 + padding_density * 1, 0, 0, "REST").as_tokens(),
-        *Event.from_midi_values(450, 50, 0, "D2").as_tokens(),
-        *Event.from_midi_values(500, 50, 0, "E2").as_tokens(),
-        *Event.from_midi_values(550, 50, 0, "F2").as_tokens(),
-        *Event.from_midi_values(600, 50, 0, "G2").as_tokens(),
-        *Event.from_midi_values(650, 50, 0, "A2").as_tokens(),
-        *Event.from_midi_values(700, 50, 0, "B2").as_tokens(),
-        *Event.from_midi_values(750, 50, 0, "C3").as_tokens(),
-        *Event.from_midi_values(850, 50, 0, "D3").as_tokens(),
-        *Event.from_midi_values(900, 50, 0, "E3").as_tokens(),
-        *Event.from_midi_values(950, 50, 0, "F3").as_tokens(),
-        *Event.from_midi_values(1000, 50, 0, "G3").as_tokens(),
+        *Event.from_midi_values(350, 50, 0, "C2", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(250 + padding_density * 1, 0, 0, "REST", s).as_tokens(),
+        *Event.from_midi_values(450, 50, 0, "D2", s).as_tokens(),
+        *Event.from_midi_values(500, 50, 0, "E2", s).as_tokens(),
+        *Event.from_midi_values(550, 50, 0, "F2", s).as_tokens(),
+        *Event.from_midi_values(600, 50, 0, "G2", s).as_tokens(),
+        *Event.from_midi_values(650, 50, 0, "A2", s).as_tokens(),
+        *Event.from_midi_values(700, 50, 0, "B2", s).as_tokens(),
+        *Event.from_midi_values(750, 50, 0, "C3", s).as_tokens(),
+        *Event.from_midi_values(850, 50, 0, "D3", s).as_tokens(),
+        *Event.from_midi_values(900, 50, 0, "E3", s).as_tokens(),
+        *Event.from_midi_values(950, 50, 0, "F3", s).as_tokens(),
+        *Event.from_midi_values(1000, 50, 0, "G3", s).as_tokens(),
         # B3 approx 100 ticks before its time
-        *Event.from_midi_values(1100, 50, 0, "B3", is_control=True).as_tokens(),
-        *Event.from_midi_values(1050, 50, 0, "A3").as_tokens(),
+        *Event.from_midi_values(1100, 50, 0, "B3", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(1050, 50, 0, "A3", s).as_tokens(),
         # C4 approx 100 ticks before its time
-        *Event.from_midi_values(1150, 50, 0, "C4", is_control=True).as_tokens(),
-        *Event.from_midi_values(1050 + padding_density * 1, 0, 0, "REST").as_tokens(),
+        *Event.from_midi_values(1150, 50, 0, "C4", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(
+            1050 + padding_density * 1, 0, 0, "REST", s
+        ).as_tokens(),
         # D4 approx 100 ticks before its time
-        *Event.from_midi_values(1250, 50, 0, "D4", is_control=True).as_tokens(),
-        *Event.from_midi_values(1050 + padding_density * 2, 0, 0, "REST").as_tokens(),
-        *Event.from_midi_values(1300, 50, 0, "E4", is_control=True).as_tokens(),
-        *Event.from_midi_values(1350, 50, 0, "F4").as_tokens(),
-        *Event.from_midi_values(1400, 50, 0, "G4").as_tokens(),
-        *Event.from_midi_values(1450, 50, 0, "A4").as_tokens(),
-        *Event.from_midi_values(1550, 50, 0, "C5", is_control=True).as_tokens(),
-        *Event.from_midi_values(1500, 50, 0, "B4").as_tokens(),
+        *Event.from_midi_values(1250, 50, 0, "D4", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(
+            1050 + padding_density * 2, 0, 0, "REST", s
+        ).as_tokens(),
+        *Event.from_midi_values(1300, 50, 0, "E4", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(1350, 50, 0, "F4", s).as_tokens(),
+        *Event.from_midi_values(1400, 50, 0, "G4", s).as_tokens(),
+        *Event.from_midi_values(1450, 50, 0, "A4", s).as_tokens(),
+        *Event.from_midi_values(1550, 50, 0, "C5", s, is_control=True).as_tokens(),
+        *Event.from_midi_values(1500, 50, 0, "B4", s).as_tokens(),
     ]
 
     get_figure_and_open(
@@ -239,46 +248,47 @@ def test_tokenization_small_sequence_ar(
     assert len(seq_3) == (1 + (m * event_size))
 
     # 50 is quarter note in 4/4 120 BPM
+    s = v1_default_settings
     assert seq_1 == [
         v.AUTOREGRESS,
         v.SEPARATOR,
         v.SEPARATOR,
         v.SEPARATOR,
-        *Event.from_midi_values(0, 50, 0, "C1").as_tokens(),
-        *Event.from_midi_values(50, 50, 0, "D1").as_tokens(),
-        *Event.from_midi_values(100, 50, 0, "E1").as_tokens(),
-        *Event.from_midi_values(150, 50, 0, "F1").as_tokens(),
-        *Event.from_midi_values(200, 50, 0, "G1").as_tokens(),
-        *Event.from_midi_values(250, 50, 0, "A1").as_tokens(),
-        *Event.from_midi_values(300, 50, 0, "B1").as_tokens(),
-        *Event.from_midi_values(350, 50, 0, "C2").as_tokens(),
-        *Event.from_midi_values(450, 50, 0, "D2").as_tokens(),
+        *Event.from_midi_values(0, 50, 0, "C1", s).as_tokens(),
+        *Event.from_midi_values(50, 50, 0, "D1", s).as_tokens(),
+        *Event.from_midi_values(100, 50, 0, "E1", s).as_tokens(),
+        *Event.from_midi_values(150, 50, 0, "F1", s).as_tokens(),
+        *Event.from_midi_values(200, 50, 0, "G1", s).as_tokens(),
+        *Event.from_midi_values(250, 50, 0, "A1", s).as_tokens(),
+        *Event.from_midi_values(300, 50, 0, "B1", s).as_tokens(),
+        *Event.from_midi_values(350, 50, 0, "C2", s).as_tokens(),
+        *Event.from_midi_values(450, 50, 0, "D2", s).as_tokens(),
     ]
     assert seq_2 == [
         v.AUTOREGRESS,
-        *Event.from_midi_values(0, 50, 0, "E2").as_tokens(),
-        *Event.from_midi_values(50, 50, 0, "F2").as_tokens(),
-        *Event.from_midi_values(100, 50, 0, "G2").as_tokens(),
-        *Event.from_midi_values(150, 50, 0, "A2").as_tokens(),
-        *Event.from_midi_values(200, 50, 0, "B2").as_tokens(),
-        *Event.from_midi_values(250, 50, 0, "C3").as_tokens(),
-        *Event.from_midi_values(350, 50, 0, "D3").as_tokens(),
-        *Event.from_midi_values(400, 50, 0, "E3").as_tokens(),
-        *Event.from_midi_values(450, 50, 0, "F3").as_tokens(),
-        *Event.from_midi_values(500, 50, 0, "G3").as_tokens(),
+        *Event.from_midi_values(0, 50, 0, "E2", s).as_tokens(),
+        *Event.from_midi_values(50, 50, 0, "F2", s).as_tokens(),
+        *Event.from_midi_values(100, 50, 0, "G2", s).as_tokens(),
+        *Event.from_midi_values(150, 50, 0, "A2", s).as_tokens(),
+        *Event.from_midi_values(200, 50, 0, "B2", s).as_tokens(),
+        *Event.from_midi_values(250, 50, 0, "C3", s).as_tokens(),
+        *Event.from_midi_values(350, 50, 0, "D3", s).as_tokens(),
+        *Event.from_midi_values(400, 50, 0, "E3", s).as_tokens(),
+        *Event.from_midi_values(450, 50, 0, "F3", s).as_tokens(),
+        *Event.from_midi_values(500, 50, 0, "G3", s).as_tokens(),
     ]
     assert seq_3 == [
         v.AUTOREGRESS,
-        *Event.from_midi_values(0, 50, 0, "A3").as_tokens(),
-        *Event.from_midi_values(50, 50, 0, "B3").as_tokens(),
-        *Event.from_midi_values(100, 50, 0, "C4").as_tokens(),
-        *Event.from_midi_values(200, 50, 0, "D4").as_tokens(),
-        *Event.from_midi_values(250, 50, 0, "E4").as_tokens(),
-        *Event.from_midi_values(300, 50, 0, "F4").as_tokens(),
-        *Event.from_midi_values(350, 50, 0, "G4").as_tokens(),
-        *Event.from_midi_values(400, 50, 0, "A4").as_tokens(),
-        *Event.from_midi_values(450, 50, 0, "B4").as_tokens(),
-        *Event.from_midi_values(500, 50, 0, "C5").as_tokens(),
+        *Event.from_midi_values(0, 50, 0, "A3", s).as_tokens(),
+        *Event.from_midi_values(50, 50, 0, "B3", s).as_tokens(),
+        *Event.from_midi_values(100, 50, 0, "C4", s).as_tokens(),
+        *Event.from_midi_values(200, 50, 0, "D4", s).as_tokens(),
+        *Event.from_midi_values(250, 50, 0, "E4", s).as_tokens(),
+        *Event.from_midi_values(300, 50, 0, "F4", s).as_tokens(),
+        *Event.from_midi_values(350, 50, 0, "G4", s).as_tokens(),
+        *Event.from_midi_values(400, 50, 0, "A4", s).as_tokens(),
+        *Event.from_midi_values(450, 50, 0, "B4", s).as_tokens(),
+        *Event.from_midi_values(500, 50, 0, "C5", s).as_tokens(),
     ]
 
     # visualize the piano roll
