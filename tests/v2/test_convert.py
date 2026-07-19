@@ -1,23 +1,22 @@
+from collections import defaultdict
+from typing import Optional, Union
 import tempfile
 from pathlib import Path
 
 import numpy as np
-
 import pytest
-from typing import Optional, Union
-from collections import defaultdict
 
 import anticipation.config as v1_config
+import anticipation.convert as v1_convert
 from anticipation.v2.config import AnticipationV2Settings, Vocab
 import anticipation.v2.convert as v2_convert
-import anticipation.convert as v1_convert
 
+from tests.util.midi import get_trimmed_midi
 from tests.util.synth import (
     get_wav_from_midi_and_get_as_numpy,
     get_wav_from_midi_and_save_to_path,
     get_relative_residual_frame_report,
 )
-from tests.util.midi import get_trimmed_midi
 
 
 @pytest.fixture()
